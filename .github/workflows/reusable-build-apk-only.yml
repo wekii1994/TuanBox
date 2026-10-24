@@ -90,8 +90,6 @@ jobs:
         include:
           - variant: builtin
             geo_bundle: "true"
-          - variant: external
-            geo_bundle: "false"
     steps:
       - name: Checkout
         uses: actions/checkout@v7.0.1
@@ -244,12 +242,6 @@ jobs:
           name: ${{ inputs.raw_apk_artifact_name }}-builtin
           path: apk-stage
 
-      - name: Download external APK
-        uses: actions/download-artifact@v8.0.2
-        with:
-          name: ${{ inputs.raw_apk_artifact_name }}-external
-          path: apk-stage
-
       - name: Verify staged APK matrix
         shell: bash
         run: |
@@ -257,18 +249,15 @@ jobs:
           tail="${{ needs.prepare-build.outputs.apk_name_tail }}"
           channel_segment="${{ needs.prepare-build.outputs.channel_segment }}"
           channel_suffix="${channel_segment:+-${channel_segment}}"
-          ls "apk-stage/YumeBox-external${channel_suffix}-${tail}.apk"
           ls "apk-stage/YumeBox-builtin${channel_suffix}-${tail}.apk"
 
       - name: Write APK guide summary
         shell: bash
         run: |
           cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
-          ## Choosing an APK variant
+          ## APK variant
 
           - `builtin`: Bundles GeoIP, GeoSite, and ASN data and works immediately after installation.
-          - `external`: Omits Geo data for a smaller APK, but requires a network download on first use.
-          - First-time users should choose `builtin` with bundled Geo data; both variants provide the same application features and core code.
           EOF
 
       - name: Upload aggregated raw APK artifact
