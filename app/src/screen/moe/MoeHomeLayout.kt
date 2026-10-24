@@ -77,6 +77,7 @@ internal class MoeHomeActions(
     val pickWallpaper: () -> Unit,
     val openSettings: () -> Unit,
     val toggleProxy: () -> Unit,
+    val openTrafficStatistics: () -> Unit = {},
 )
 
 @Composable
@@ -246,7 +247,11 @@ private fun BoxScope.MoeHero(state: MoeHomeLayoutState, scale: Float) {
             exit = fadeOut() + slideOutVertically { it / 3 },
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(MoeUi.Hero.runtimeInfoTopGap)) {
-                MoeTrafficStrip(state.traffic.download, state.traffic.upload)
+                MoeTrafficStrip(
+                    downloadSpeed = state.traffic.download,
+                    uploadSpeed = state.traffic.upload,
+                    modifier = Modifier.clickable(onClick = actions.openTrafficStatistics),
+                )
                 MoeHomeInfoPanel(
                     serverName = state.selectedServerName.takeIf { state.isRunning },
                     serverPing = state.selectedServerPing.takeIf { state.isRunning },
@@ -402,7 +407,11 @@ private fun MoeTabletHomeLayout(
                         Column(
                             verticalArrangement = Arrangement.spacedBy(MoeUi.Hero.runtimeInfoTopGap)
                         ) {
-                            MoeTrafficStrip(state.traffic.download, state.traffic.upload)
+                            MoeTrafficStrip(
+                                downloadSpeed = state.traffic.download,
+                                uploadSpeed = state.traffic.upload,
+                                modifier = Modifier.clickable(onClick = actions.openTrafficStatistics),
+                            )
                             MoeHomeInfoPanel(
                                 serverName = state.selectedServerName.takeIf { state.isRunning },
                                 serverPing = state.selectedServerPing.takeIf { state.isRunning },

@@ -35,7 +35,7 @@ import org.koin.dsl.module
 val featureMetaViewModelModule = module {
     single { CustomRoutingBootstrapper(get()) }
     viewModel { ConnectionViewModel(androidContext()) }
-    viewModel { TrafficStatisticsViewModel(get<TrafficStatisticsStore>()) }
+    viewModel { TrafficStatisticsViewModel(get<TrafficStatisticsStore>(), androidContext()) }
     viewModel { CustomRoutingViewModel(get(), get(), get()) }
 }
 

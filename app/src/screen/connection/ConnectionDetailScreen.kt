@@ -30,6 +30,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import com.github.yumeyucca.yumebox.core.domain.ConnectionHistoryManager
 import com.github.yumeyucca.yumebox.core.model.ConnectionInfo
 import com.github.yumeyucca.yumebox.core.util.PollingTimerSpecs
 import com.github.yumeyucca.yumebox.core.util.PollingTimers
@@ -65,6 +66,30 @@ fun ConnectionDetailScreen(navigator: Navigator, connectionId: String) {
         mutableStateOf(ConnectionDetailHolder.canInterrupt && connection != null)
     }
     var isInterrupting by remember { mutableStateOf(false) }
+
+    LaunchedEffect(connectionId) {
+        if (connection == null) {
+            val (match, isActive) = withContext(Dispatchers.IO) {
+                val active = runCatching {
+                    RuntimeAccess.connect(context)
+                    RuntimeAccess.core().queryConnections().connections
+                }.getOrNull()
+                val activeMatch = active?.firstOrNull { it.id == connectionId }
+                if (activeMatch != null) {
+                    activeMatch to true
+                } else {
+                    val closedMatch =
+                        ConnectionHistoryManager.getClosedConnections().firstOrNull { it.id == connectionId }
+                    closedMatch to false
+                }
+            }
+            if (match != null) {
+                connection = match
+                canInterrupt = isActive
+                ConnectionDetailHolder.setup(match, isActive)
+            }
+        }
+    }
 
     LaunchedEffect(connectionId, canInterrupt) {
         if (!canInterrupt) return@LaunchedEffect

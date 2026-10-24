@@ -56,7 +56,7 @@ import com.github.yumeyucca.yumebox.presentation.component.LocalNavigator
 import com.github.yumeyucca.yumebox.presentation.icon.ShellIcons
 import com.github.yumeyucca.yumebox.presentation.icon.Yume
 import com.github.yumeyucca.yumebox.presentation.icon.yume.Zashboard
-import com.github.yumeyucca.yumebox.presentation.icon.yume.Palette
+import com.github.yumeyucca.yumebox.presentation.icon.yume.Activity
 import com.github.yumeyucca.yumebox.presentation.navigation.Route
 import com.github.yumeyucca.yumebox.presentation.theme.AnimationSpecs
 import com.github.yumeyucca.yumebox.screen.home.HomeProxyControlState
@@ -251,10 +251,10 @@ fun MoeHomePage(
             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
         )
     }
-    val homeSidebarIcons = remember(sidebarIcons, launchWallpaperPicker) {
-        sidebarIcons + MoeSidebarIconItem(Yume.Palette) {
-            hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
-            launchWallpaperPicker()
+    val homeSidebarIcons = remember(sidebarIcons, navigator) {
+        sidebarIcons + MoeSidebarIconItem(Yume.Activity) {
+            hapticFeedback.performHapticFeedback(HapticFeedbackType.VirtualKey)
+            navigator.push(Route.TrafficStatistics)
         }
     }
 
@@ -296,6 +296,7 @@ fun MoeHomePage(
             },
             openSettings = { showHomeSettingsSheet = true },
             toggleProxy = handleProxyAction,
+            openTrafficStatistics = { navigator.push(Route.TrafficStatistics) },
         )
     CompositionLocalProvider(LocalWallpaperRefreshKey provides wallpaperRefreshKey) {
         with(actions) { MoeHomeLayout(layoutState) }
