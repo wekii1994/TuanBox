@@ -90,8 +90,6 @@ jobs:
         include:
           - variant: builtin
             geo_bundle: "true"
-          - variant: external
-            geo_bundle: "false"
     steps:
       - name: Checkout
         uses: actions/checkout@v7.0.1
@@ -162,8 +160,11 @@ jobs:
         env:
           SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
         run: |
-          if [ -n "${SIGNING_KEYSTORE_BASE64}" ]; then
-            printf '%s' "${SIGNING_KEYSTORE_BASE64}" | base64 -D > release.keystore
+          if [ -n "${SIGNING_KEYSTORE_BASE64:-}" ]; then
+            printf '%s' "${SIGNING_KEYSTORE_BASE64}" | (base64 -d 2>/dev/null || base64 -D) > release.keystore
+          elif [ -f .github/signing/release.keystore ]; then
+            echo "Using repository default solidified release keystore"
+            cp .github/signing/release.keystore release.keystore
           fi
 
       - name: Write signing config
@@ -173,10 +174,16 @@ jobs:
           SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
           SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
         run: |
-          if [ -n "${SIGNING_STORE_PASSWORD}" ]; then
+          if [ -n "${SIGNING_STORE_PASSWORD:-}" ]; then
             printf 'keystore.password=%s\n' "${SIGNING_STORE_PASSWORD}" > signing.properties
             printf 'key.alias=%s\n' "${SIGNING_KEY_ALIAS}" >> signing.properties
             printf 'key.password=%s\n' "${SIGNING_KEY_PASSWORD}" >> signing.properties
+            echo "keystore.path=release.keystore" >> signing.properties
+          elif [ -f release.keystore ]; then
+            echo "Writing default release signing config"
+            printf 'keystore.password=android\n' > signing.properties
+            printf 'key.alias=yumebox\n' >> signing.properties
+            printf 'key.password=android\n' >> signing.properties
             echo "keystore.path=release.keystore" >> signing.properties
           fi
 
@@ -235,12 +242,6 @@ jobs:
           name: ${{ inputs.raw_apk_artifact_name }}-builtin
           path: apk-stage
 
-      - name: Download external APK
-        uses: actions/download-artifact@v8.0.2
-        with:
-          name: ${{ inputs.raw_apk_artifact_name }}-external
-          path: apk-stage
-
       - name: Verify staged APK matrix
         shell: bash
         run: |
@@ -248,18 +249,15 @@ jobs:
           tail="${{ needs.prepare-build.outputs.apk_name_tail }}"
           channel_segment="${{ needs.prepare-build.outputs.channel_segment }}"
           channel_suffix="${channel_segment:+-${channel_segment}}"
-          ls "apk-stage/YumeBox-external${channel_suffix}-${tail}.apk"
           ls "apk-stage/YumeBox-builtin${channel_suffix}-${tail}.apk"
 
       - name: Write APK guide summary
         shell: bash
         run: |
           cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
-          ## Choosing an APK variant
+          ## APK variant
 
           - `builtin`: Bundles GeoIP, GeoSite, and ASN data and works immediately after installation.
-          - `external`: Omits Geo data for a smaller APK, but requires a network download on first use.
-          - First-time users should choose `builtin` with bundled Geo data; both variants provide the same application features and core code.
           EOF
 
       - name: Upload aggregated raw APK artifact

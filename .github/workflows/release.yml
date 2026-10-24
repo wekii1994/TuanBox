@@ -1,16 +1,20 @@
-name: Release
+name: Auto Release (arm64-v8a)
 
 on:
+  push:
+    branches: [ "master", "main" ]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "website/**"
+      - ".gitignore"
   workflow_dispatch:
     inputs:
-      release_tag:
-        description: "Release tag (e.g. v0.5.2)"
-        required: true
+      manual_tag:
+        description: "自定义版本标签 (留空则自动按 pre1, pre2 递增)"
+        required: false
         type: string
-      release_title:
-        description: "Release title"
-        required: true
-        type: string
+        default: ""
 
 concurrency:
   group: release-${{ github.ref }}
@@ -21,20 +25,87 @@ permissions:
   attestations: write
   id-token: write
 
-# Manual official-release pipeline: mirrors the ci-channel pre pipeline with channel=stable
-# and kernel_channel=alpha. build_hash/build_branch are intentionally NOT passed so the
-# release keeps the clean base versionName (e.g. 0.5.2, no hash/branch suffix). The
-# versionCode is NOT the bare epoch anymore: reusable-build-apk-only.yml /
-# reusable-prepare-publish.yml compute versionCode = project.version.code
-# (product.properties) + `git rev-list --count HEAD` themselves, so every release gets a
-# unique versionCode in the same sequence as channel packages - upgrading from a channel
-# build of an older commit to a release of a newer commit is no longer a downgrade.
-# publish-release runs with prerelease=false -> generate_release_notes=false (empty body,
-# edited by hand afterwards) and make_latest=true (channel == 'stable').
 jobs:
-  # Prebuild Java/Kotlin & module resources in parallel with the native build jobs.
+  prepare-version:
+    name: "00 · Prepare Version & Release Notes"
+    runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.version.outputs.release_tag }}
+      release_title: ${{ steps.version.outputs.release_title }}
+      release_body: ${{ steps.version.outputs.release_body }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Compute version tag and release notes
+        id: version
+        shell: bash
+        run: |
+          set -eu
+          base_version="$(grep '^project.version.name=' product.properties | cut -d= -f2- | tr -d ' \r\n')"
+          echo "Base upstream version: ${base_version}"
+
+          manual_tag="${{ inputs.manual_tag }}"
+          if [ -n "${manual_tag}" ]; then
+            release_tag="${manual_tag}"
+            release_title="YumeBox ${manual_tag}"
+          else
+            git fetch --tags --force || true
+            existing_nums=$(git tag -l "v${base_version}-pre*" "${base_version}-pre*" 2>/dev/null | sed -E "s/^v?${base_version}-pre//" | grep -E '^[0-9]+$' | sort -n || true)
+            latest_num=$(printf '%s\n' "${existing_nums}" | grep -v '^$' | tail -n 1 || true)
+            if [ -z "${latest_num}" ]; then
+              next_num=1
+            else
+              next_num=$((latest_num + 1))
+            fi
+            release_tag="v${base_version}-pre${next_num}"
+            release_title="YumeBox v${base_version}-pre${next_num}"
+          fi
+
+          echo "Target tag: ${release_tag}"
+          echo "Target title: ${release_title}"
+          echo "release_tag=${release_tag}" >> "$GITHUB_OUTPUT"
+          echo "release_title=${release_title}" >> "$GITHUB_OUTPUT"
+
+          # Generate release notes
+          cat << EOF > release_body.md
+          ## 🚀 YumeBox ${release_tag}
+
+          ### 📦 构建信息
+          - **版本号**：\`${release_tag}\`（基于上游版本 \`${base_version}\`）
+          - **目标架构**：\`arm64-v8a\`
+          - **发布签名**：固化固定密钥签名（支持覆盖安装更新，无需卸载）
+          - **构建分支**：\`${{ github.ref_name }}\`
+          - **提交哈希**：\`${{ github.sha }}\`
+          - **构建时间**：$(date -u "+%Y-%m-%d %H:%M:%S UTC")
+
+          ### 📝 更新记录
+          EOF
+
+          prev_tag=$(git tag -l "v${base_version}-pre*" "${base_version}-pre*" 2>/dev/null | sort -V | tail -n 1 || true)
+          if [ -n "${prev_tag}" ] && git rev-parse "${prev_tag}" >/dev/null 2>&1; then
+            echo "对比上一版本 \`${prev_tag}\` 的提交变更：" >> release_body.md
+            git log "${prev_tag}..HEAD" --pretty=format:"- %s (\`%h\`)" --no-merges >> release_body.md || true
+          else
+            echo "近期提交变更：" >> release_body.md
+            git log -n 10 --pretty=format:"- %s (\`%h\`)" --no-merges >> release_body.md || true
+          fi
+
+          echo "" >> release_body.md
+          echo "---" >> release_body.md
+          echo "> 💡 **提示**：本安装包使用固化的 Android 发布签名密钥构建，后续下载新 Release 版本可直接覆盖升级，保留全部配置与数据。" >> release_body.md
+
+          {
+            echo "release_body<<EOF"
+            cat release_body.md
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
   prebuild-modules-stable:
-    name: Prebuild Modules (Stable)
+    name: "01 · Prebuild Modules"
+    needs: prepare-version
     uses: ./.github/workflows/reusable-prebuild-modules.yml
     with:
       channel: stable
@@ -42,14 +113,16 @@ jobs:
     secrets: inherit
 
   build-geo-stable:
-    name: Geo (Stable)
+    name: "01 · Geo (Stable)"
+    needs: prepare-version
     uses: ./.github/workflows/reusable-build-geo.yml
     with:
       channel: stable
     secrets: inherit
 
   build-native-abi-stable-arm64-v8a:
-    name: Native v8a (Stable)
+    name: "02 · Native (arm64-v8a)"
+    needs: prepare-version
     uses: ./.github/workflows/reusable-build-native-abi.yml
     with:
       channel: stable
@@ -58,7 +131,7 @@ jobs:
     secrets: inherit
 
   bundle-native-stable:
-    name: Bundle (Stable)
+    name: "03 · Bundle (Stable)"
     needs:
       - build-geo-stable
       - build-native-abi-stable-arm64-v8a
@@ -68,29 +141,32 @@ jobs:
     secrets: inherit
 
   build-apk-stable-app:
-    name: APK (Stable)
+    name: "04 · Build APK (arm64-v8a)"
     needs:
+      - prepare-version
       - bundle-native-stable
       - prebuild-modules-stable
     uses: ./.github/workflows/reusable-build-apk-only.yml
     with:
       channel: stable
       module: app
-      release_tag: ${{ inputs.release_tag }}
+      release_tag: ${{ needs.prepare-version.outputs.release_tag }}
       meta_asset_name: YumeBox-stable-meta.json
       raw_apk_artifact_name: apk-raw-stable-app
       build_type: release
     secrets: inherit
 
   prepare-publish-stable-app:
-    name: Publish (Stable)
-    needs: build-apk-stable-app
+    name: "05 · Prepare Publish"
+    needs:
+      - prepare-version
+      - build-apk-stable-app
     uses: ./.github/workflows/reusable-prepare-publish.yml
     with:
       channel: stable
       module: app
       artifact_prefix: YumeBox
-      release_tag: ${{ inputs.release_tag }}
+      release_tag: ${{ needs.prepare-version.outputs.release_tag }}
       meta_asset_name: YumeBox-stable-meta.json
       raw_apk_artifact_name: apk-raw-stable-app
       publish_artifact_name: publish-stable-app
@@ -98,21 +174,25 @@ jobs:
     secrets: inherit
 
   publish-release-stable:
-    name: Release (Stable)
-    needs: prepare-publish-stable-app
+    name: "06 · Publish to Release"
+    needs:
+      - prepare-version
+      - prepare-publish-stable-app
     uses: ./.github/workflows/reusable-publish-release.yml
     with:
       channel: stable
-      release_tag: ${{ inputs.release_tag }}
-      release_name: ${{ inputs.release_title }}
+      release_tag: ${{ needs.prepare-version.outputs.release_tag }}
+      release_name: ${{ needs.prepare-version.outputs.release_title }}
       prerelease: false
       publish_artifacts: publish-stable-app
       recreate_release: false
+      body: ${{ needs.prepare-version.outputs.release_body }}
     secrets: inherit
 
   cleanup-artifacts:
-    name: Cleanup
+    name: "07 · Cleanup Artifacts"
     needs: publish-release-stable
+    if: always()
     permissions:
       actions: write
     uses: ./.github/workflows/reusable-cleanup-artifacts.yml
