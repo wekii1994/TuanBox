@@ -59,6 +59,8 @@ import com.github.yumeyucca.yumebox.presentation.theme.AppTheme
 import com.github.yumeyucca.yumebox.presentation.theme.UiDp
 import org.koin.androidx.compose.koinViewModel
 import com.github.yumeyucca.yumebox.core.locale.YumeTxt
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
@@ -391,9 +393,16 @@ private fun DetailsSectionCard(
                         if (uiState.targetSites.isEmpty()) {
                             EmptyDetailNotice("暂无目标站点统计，开启代理后产生流量将自动聚合")
                         } else {
+                            val maxBytes = remember(uiState.targetSites) {
+                                uiState.targetSites.maxOfOrNull(TargetSiteRecord::totalBytes)?.coerceAtLeast(1L) ?: 1L
+                            }
                             Column(verticalArrangement = Arrangement.spacedBy(spacing.space10)) {
-                                uiState.targetSites.forEach { site ->
-                                    TargetSiteItemCard(record = site)
+                                uiState.targetSites.forEachIndexed { index, site ->
+                                    TargetSiteItemCard(
+                                        record = site,
+                                        rank = index + 1,
+                                        maxBytes = maxBytes,
+                                    )
                                 }
                             }
                         }
@@ -411,6 +420,7 @@ private fun RecentRequestItemCard(
 ) {
     val spacing = AppTheme.spacing
     val radii = AppTheme.radii
+    val colors = AppTheme.colors
     val connection = record.connection
     val destination = remember(connection) { connection.extractDisplayDestination() }
     val totalTraffic = connection.upload + connection.download
@@ -421,26 +431,44 @@ private fun RecentRequestItemCard(
     val sourcePackageName = record.sourcePackageName
     val subHost = record.subHostDetail
 
+    val network = remember(connection.metadata) {
+        connection.metadata["network"]?.jsonPrimitive?.contentOrNull?.uppercase() ?: "TCP"
+    }
+    val protocolColor = when (network) {
+        "TCP" -> colors.protocol.tcp
+        "UDP" -> colors.protocol.udp
+        "HTTP" -> colors.protocol.http
+        "HTTPS" -> colors.protocol.https
+        else -> colors.protocol.unknown
+    }
+
+    val rule = connection.rule
+    val rulePayload = connection.rulePayload
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(radii.radius16))
-            .background(MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+            .background(MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
             .clickable(onClick = onClick)
-            .padding(spacing.space12),
+            .padding(horizontal = spacing.space16, vertical = spacing.space12),
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(spacing.space8)) {
+            // Top Row: Effective Host + Time & Traffic
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.Top,
             ) {
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(spacing.space2)) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(spacing.space2),
+                ) {
                     Text(
                         text = effectiveHost,
                         style = MiuixTheme.textStyles.body2,
                         color = MiuixTheme.colorScheme.onSurface,
-                        fontWeight = FontWeight.Medium,
+                        fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -462,147 +490,305 @@ private fun RecentRequestItemCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
+
                 Spacer(modifier = Modifier.width(spacing.space12))
-                Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(spacing.space2)) {
-                    Text(
-                        text = formatConnectionTime(connection.start),
-                        style = MiuixTheme.textStyles.footnote1,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    )
+
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(spacing.space2),
+                ) {
                     Text(
                         text = formatBytes(totalTraffic),
                         style = MiuixTheme.textStyles.body2,
                         color = MiuixTheme.colorScheme.primary,
-                        fontWeight = FontWeight.SemiBold,
+                        fontWeight = FontWeight.Bold,
                     )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(spacing.space4),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = "↑${formatBytes(connection.upload)}",
+                            style = MiuixTheme.textStyles.footnote1.copy(fontSize = 11.sp),
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        )
+                        Text(
+                            text = "↓${formatBytes(connection.download)}",
+                            style = MiuixTheme.textStyles.footnote1.copy(fontSize = 11.sp),
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        )
+                    }
                 }
             }
 
-            // Chips: Status, Outbound Groups, Nodes
+            // Bottom Badges Row: Status, Network, Outbound Route, Rule, Time
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(spacing.space6),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                StatusBadge(
-                    text = if (record.isActive) "活跃" else "已结束",
-                    isActive = record.isActive,
+                FlowRow(
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(spacing.space6),
+                    verticalArrangement = Arrangement.spacedBy(spacing.space4),
+                ) {
+                    // Active Status Chip
+                    StatusBadge(
+                        text = if (record.isActive) "活跃" else "已结束",
+                        isActive = record.isActive,
+                    )
+
+                    // Protocol Chip (TCP / UDP)
+                    ProtocolChip(network = network, color = protocolColor)
+
+                    // Outbound Route Chains (e.g. "PROXIES → 香港 01" or "DIRECT")
+                    val topGroup = record.topLevelGroupName
+                    val bottomNode = record.bottomNodeName
+                    val routeLabel = when {
+                        !topGroup.isNullOrBlank() && !bottomNode.isNullOrBlank() && topGroup != bottomNode ->
+                            "$topGroup → $bottomNode"
+                        !bottomNode.isNullOrBlank() -> bottomNode
+                        !topGroup.isNullOrBlank() -> topGroup
+                        else -> null
+                    }
+                    if (routeLabel != null) {
+                        SmallBadge(text = routeLabel, isPrimary = false)
+                    }
+
+                    // Rule Tag (e.g. "Google" or "RuleSet")
+                    val ruleLabel = when {
+                        rulePayload.isNotBlank() -> rulePayload
+                        rule.isNotBlank() -> rule
+                        else -> null
+                    }
+                    if (ruleLabel != null) {
+                        SmallBadge(text = "🎯 $ruleLabel", isPrimary = true)
+                    }
+                }
+
+                Text(
+                    text = formatConnectionTime(connection.start),
+                    style = MiuixTheme.textStyles.footnote1.copy(fontSize = 11.sp),
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    modifier = Modifier.padding(start = spacing.space4),
                 )
-                val topLevelGroupName = record.topLevelGroupName
-                if (!topLevelGroupName.isNullOrBlank()) {
-                    SmallBadge(text = topLevelGroupName, isPrimary = true)
-                }
-                val bottomNodeName = record.bottomNodeName
-                if (!bottomNodeName.isNullOrBlank()) {
-                    SmallBadge(text = bottomNodeName, isPrimary = false)
-                }
             }
         }
     }
 }
 
 @Composable
-private fun TargetSiteItemCard(record: TargetSiteRecord) {
+private fun TargetSiteItemCard(
+    record: TargetSiteRecord,
+    rank: Int,
+    maxBytes: Long,
+) {
     val spacing = AppTheme.spacing
     val radii = AppTheme.radii
-
     val serviceTag = record.serviceTag
     val connCount = record.connectionCount
     val timeText = formatMillisTime(record.lastSeenAt)
-    val subtitleText = if (!serviceTag.isNullOrBlank()) {
-        "$serviceTag · $timeText"
-    } else {
-        timeText
-    }
+    val progress = (record.totalBytes.toFloat() / maxBytes.toFloat()).coerceIn(0f, 1f)
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(radii.radius16))
-            .background(MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-            .padding(spacing.space12),
+            .background(MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+            .padding(horizontal = spacing.space16, vertical = spacing.space12),
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(spacing.space8)) {
+            // Row 1: Rank Badge + Domain Name + Service Tag + Total Traffic
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(spacing.space2)) {
-                    Text(
-                        text = record.displayName,
-                        style = MiuixTheme.textStyles.body2,
-                        color = MiuixTheme.colorScheme.onSurface,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = subtitleText,
-                        style = MiuixTheme.textStyles.footnote1,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    )
+                Row(
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(spacing.space8),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    RankBadge(rank = rank)
+
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(spacing.space2),
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(spacing.space6),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = record.displayName,
+                                style = MiuixTheme.textStyles.body2,
+                                color = MiuixTheme.colorScheme.onSurface,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false),
+                            )
+                            if (!serviceTag.isNullOrBlank()) {
+                                SmallBadge(text = serviceTag, isPrimary = true)
+                            }
+                        }
+                    }
                 }
+
                 Spacer(modifier = Modifier.width(spacing.space12))
+
                 Text(
                     text = formatBytes(record.totalBytes),
                     style = MiuixTheme.textStyles.body2,
                     color = MiuixTheme.colorScheme.primary,
-                    fontWeight = FontWeight.SemiBold,
+                    fontWeight = FontWeight.Bold,
                 )
             }
 
+            // Progress bar showing proportion of total / max site traffic
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(UiDp.dp4)
+                    .clip(RoundedCornerShape(radii.full))
+                    .background(MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f)),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(progress.coerceAtLeast(0.02f))
+                        .height(UiDp.dp4)
+                        .clip(RoundedCornerShape(radii.full))
+                        .background(MiuixTheme.colorScheme.primary),
+                )
+            }
+
+            // Row 3: Upload/Download breakdown + Connection count + Time
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(spacing.space8),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                SmallBadge(text = "上行: ${formatBytes(record.totalUpload)}", isPrimary = true)
-                SmallBadge(text = "下行: ${formatBytes(record.totalDownload)}", isPrimary = false)
-                if (connCount > 1) {
-                    SmallBadge(text = "$connCount 个连接", isPrimary = false)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(spacing.space8),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "↑ ${formatBytes(record.totalUpload)}",
+                        style = MiuixTheme.textStyles.footnote1.copy(fontSize = 11.sp),
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    )
+                    Text(
+                        text = "↓ ${formatBytes(record.totalDownload)}",
+                        style = MiuixTheme.textStyles.footnote1.copy(fontSize = 11.sp),
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    )
                 }
+
+                Text(
+                    text = "$connCount 次请求 · $timeText",
+                    style = MiuixTheme.textStyles.footnote1.copy(fontSize = 11.sp),
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                )
             }
         }
     }
 }
 
 @Composable
+private fun RankBadge(rank: Int) {
+    val radii = AppTheme.radii
+    val isTop3 = rank <= 3
+    val bgColor = if (isTop3) {
+        MiuixTheme.colorScheme.primary.copy(alpha = 0.15f)
+    } else {
+        MiuixTheme.colorScheme.surface.copy(alpha = 0.6f)
+    }
+    val textColor = if (isTop3) {
+        MiuixTheme.colorScheme.primary
+    } else {
+        MiuixTheme.colorScheme.onSurfaceVariantSummary
+    }
+
+    Box(
+        modifier = Modifier
+            .size(22.dp)
+            .clip(RoundedCornerShape(radii.radius8))
+            .background(bgColor),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = "$rank",
+            style = MiuixTheme.textStyles.footnote1.copy(fontSize = 11.sp),
+            fontWeight = if (isTop3) FontWeight.Bold else FontWeight.Medium,
+            color = textColor,
+        )
+    }
+}
+
+@Composable
+private fun ProtocolChip(network: String, color: Color) {
+    val radii = AppTheme.radii
+    Text(
+        text = network,
+        style = MiuixTheme.textStyles.footnote1.copy(fontSize = 10.sp),
+        fontWeight = FontWeight.SemiBold,
+        color = color,
+        modifier = Modifier
+            .clip(RoundedCornerShape(radii.radius8))
+            .background(color.copy(alpha = 0.12f))
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+    )
+}
+
+@Composable
 private fun StatusBadge(text: String, isActive: Boolean) {
     val radii = AppTheme.radii
-    val bgColor = if (isActive) MiuixTheme.colorScheme.primary.copy(alpha = 0.15f) else MiuixTheme.colorScheme.surfaceVariant
-    val textColor = if (isActive) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurfaceVariantSummary
+    val colors = AppTheme.colors
+    val activeColor = colors.connection.chainActive
+    val bgColor = if (isActive) activeColor.copy(alpha = 0.12f) else MiuixTheme.colorScheme.surface.copy(alpha = 0.6f)
+    val textColor = if (isActive) activeColor else MiuixTheme.colorScheme.onSurfaceVariantSummary
 
-    Text(
-        text = text,
-        style = MiuixTheme.textStyles.footnote1,
-        color = textColor,
-        fontSize = 11.sp,
-        fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
         modifier = Modifier
             .clip(RoundedCornerShape(radii.radius8))
             .background(bgColor)
-            .padding(horizontal = 8.dp, vertical = 2.dp),
-    )
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+    ) {
+        if (isActive) {
+            Box(
+                modifier = Modifier
+                    .size(6.dp)
+                    .clip(RoundedCornerShape(radii.full))
+                    .background(activeColor),
+            )
+        }
+        Text(
+            text = text,
+            style = MiuixTheme.textStyles.footnote1.copy(fontSize = 10.sp),
+            color = textColor,
+            fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
+        )
+    }
 }
 
 @Composable
 private fun SmallBadge(text: String, isPrimary: Boolean) {
     val radii = AppTheme.radii
     val bgColor = if (isPrimary) MiuixTheme.colorScheme.primary.copy(alpha = 0.1f) else MiuixTheme.colorScheme.surface.copy(alpha = 0.6f)
-    val textColor = if (isPrimary) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface
+    val textColor = if (isPrimary) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurfaceVariantSummary
 
     Text(
         text = text,
-        style = MiuixTheme.textStyles.footnote1,
+        style = MiuixTheme.textStyles.footnote1.copy(fontSize = 10.sp),
         color = textColor,
-        fontSize = 11.sp,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         modifier = Modifier
             .clip(RoundedCornerShape(radii.radius8))
             .background(bgColor)
-            .padding(horizontal = 8.dp, vertical = 2.dp),
+            .padding(horizontal = 6.dp, vertical = 2.dp),
     )
 }
 
