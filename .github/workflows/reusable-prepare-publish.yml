@@ -60,7 +60,7 @@ jobs:
   prepare:
     runs-on: macos-26
     outputs:
-      default_apk_name: ${{ steps.stem.outputs.external_arm64 }}.apk
+      default_apk_name: ${{ steps.stem.outputs.builtin_arm64 }}.apk
       builtin_apk_name: ${{ steps.stem.outputs.builtin_arm64 }}.apk
     steps:
       - name: Checkout
@@ -152,13 +152,11 @@ jobs:
           mkdir -p publish
           version_name="${{ steps.version.outputs.version_name }}"
           version_code="${{ steps.version.outputs.version_code }}"
-          stem_external="${{ steps.stem.outputs.external_arm64 }}"
           stem_builtin="${{ steps.stem.outputs.builtin_arm64 }}"
           release_url="https://github.com/${{ github.repository }}/releases/tag/${{ inputs.release_tag }}"
           publish_time="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
           names=(
-            "${stem_external}.apk"
             "${stem_builtin}.apk"
           )
           for name in "${names[@]}"; do
@@ -171,7 +169,7 @@ jobs:
             test -f "${apk}" || continue
             actual=$((actual + 1))
           done
-          expected=2
+          expected=1
           if [ "${actual}" -ne "${expected}" ]; then
             echo "Expected ${expected} publish APKs, got ${actual}:" >&2
             ls publish >&2
@@ -270,14 +268,6 @@ jobs:
       # name and the `name:` input is ignored, so these artifacts appear exactly as the
       # publish file names from "Prepare publish artifacts". The notification workflow downloads
       # both arm64-v8a variants via the outputs above.
-      - name: Upload arm64-v8a APK artifact (external geo)
-        uses: actions/upload-artifact@v7.0.2
-        with:
-          name: ${{ steps.stem.outputs.external_arm64 }}
-          path: publish/${{ steps.stem.outputs.external_arm64 }}.apk
-          if-no-files-found: error
-          archive: false
-
       - name: Upload arm64-v8a APK artifact (builtin geo)
         uses: actions/upload-artifact@v7.0.2
         with:
