@@ -524,11 +524,12 @@ private fun RecentRequestItemCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
+                    val sourcePackageName = record.sourcePackageName
                     Text(
-                        text = if (record.sourcePackageName.isNullOrBlank() || record.sourcePackageName == record.sourceAppName) {
+                        text = if (sourcePackageName.isNullOrBlank() || sourcePackageName == record.sourceAppName) {
                             record.sourceAppName
                         } else {
-                            "${record.sourceAppName} · ${record.sourcePackageName}"
+                            "${record.sourceAppName} · $sourcePackageName"
                         },
                         style = MiuixTheme.textStyles.footnote1,
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
@@ -562,11 +563,13 @@ private fun RecentRequestItemCard(
                     text = if (record.isActive) "活跃" else "已结束",
                     isActive = record.isActive,
                 )
-                if (!record.topLevelGroupName.isNullOrBlank()) {
-                    SmallBadge(text = record.topLevelGroupName, isPrimary = true)
+                val topLevelGroupName = record.topLevelGroupName
+                if (!topLevelGroupName.isNullOrBlank()) {
+                    SmallBadge(text = topLevelGroupName, isPrimary = true)
                 }
-                if (!record.bottomNodeName.isNullOrBlank()) {
-                    SmallBadge(text = record.bottomNodeName, isPrimary = false)
+                val bottomNodeName = record.bottomNodeName
+                if (!bottomNodeName.isNullOrBlank()) {
+                    SmallBadge(text = bottomNodeName, isPrimary = false)
                 }
             }
         }
