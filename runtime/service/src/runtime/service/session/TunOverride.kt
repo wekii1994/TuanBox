@@ -93,7 +93,13 @@ object TunOverride {
             }
         }
 
-        return YamlCodec.dumpMap(linkedMapOf<String, Any?>("tun" to tun, "dns" to dns))
+        return YamlCodec.dumpMap(
+            linkedMapOf<String, Any?>(
+                "tun" to tun,
+                "dns" to dns,
+                "find-process-mode" to "always",
+            )
+        )
     }
 
     /** Writes the override YAML into `dir` and returns its `OverrideSpec` for the compile chain. */

@@ -49,14 +49,24 @@ class AppIdentityResolver(context: Context) {
 
     fun resolve(metadata: JsonObject): AppIdentity {
         val explicitPackageName =
-            metadata["packageName"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
+            metadata["packageName"]?.jsonPrimitive?.contentOrNull?.trim()
+                ?: metadata["package"]?.jsonPrimitive?.contentOrNull?.trim()
+                ?: extractPackageFromProcessPath(metadata["processPath"]?.jsonPrimitive?.contentOrNull?.trim())
+                .orEmpty()
         val processName = metadata["process"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
-        val uid = metadata["uid"]?.jsonPrimitive?.intOrNull
+        val uid = metadata["uid"]?.jsonPrimitive?.contentOrNull?.toIntOrNull()
+            ?: metadata["uid"]?.jsonPrimitive?.intOrNull
         return resolve(
             explicitPackageName = explicitPackageName,
             processName = processName,
             uid = uid,
         )
+    }
+
+    private fun extractPackageFromProcessPath(path: String?): String? {
+        if (path.isNullOrBlank()) return null
+        val match = Regex("""/data/app/(?:~~[^/]+/)?([a-zA-Z0-9_]+(?:\.[a-zA-Z0-9_]+)+)""").find(path)
+        return match?.groupValues?.getOrNull(1)
     }
 
     fun resolve(explicitPackageName: String, processName: String, uid: Int?): AppIdentity {
@@ -85,12 +95,19 @@ class AppIdentityResolver(context: Context) {
                         appName = resolveLabel(packageName).ifBlank { packageName },
                     )
 
-                uid != null && uid > 0 ->
+                uid != null && uid > 0 -> {
+                    val appName = when {
+                        uid == 1000 -> "系统核心 (Android)"
+                        uid < 10000 -> "系统服务 (UID $uid)"
+                        processName.isNotBlank() -> processName
+                        else -> "应用 (UID $uid)"
+                    }
                     AppIdentity(
                         appKey = "uid:$uid",
-                        packageName = null,
-                        appName = processName.ifBlank { "UID $uid" },
+                        packageName = if (uid == 1000) "android" else null,
+                        appName = appName,
                     )
+                }
 
                 processName.isNotBlank() ->
                     AppIdentity(

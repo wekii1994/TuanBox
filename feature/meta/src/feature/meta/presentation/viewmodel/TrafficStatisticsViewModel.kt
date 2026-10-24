@@ -50,6 +50,8 @@ data class RecentRequestRecord(
     val bottomNodeName: String?,
     val sourceAppName: String,
     val sourcePackageName: String?,
+    val displayHost: String = "",
+    val subHostDetail: String? = null,
 )
 
 data class TargetSiteRecord(
@@ -58,6 +60,8 @@ data class TargetSiteRecord(
     val totalUpload: Long,
     val totalDownload: Long,
     val lastSeenAt: Long,
+    val serviceTag: String? = null,
+    val connectionCount: Int = 1,
 ) {
     val totalBytes: Long
         get() = totalUpload + totalDownload
@@ -197,6 +201,27 @@ class TrafficStatisticsViewModel(
         val recentRequests = allConnections.take(30).map { conn ->
             val app = appIdentityResolver.resolve(conn.metadata)
             val chains = conn.chains.map(String::trim).filter(String::isNotEmpty)
+            val dest = conn.extractDisplayDestination()
+            val parsed = DomainClassifier.parse(dest)
+            val port = conn.metadata["destinationPort"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
+            val portSuffix = if (port.isNotBlank() && !parsed.rootDomain.contains(':')) ":$port" else ""
+
+            val displayHost: String
+            val subHostDetail: String?
+
+            if (parsed.isCdnSharded) {
+                val prefix = dest.substringBefore(".${parsed.rootDomain}")
+                displayHost = "${parsed.rootDomain}$portSuffix"
+                subHostDetail = if (parsed.serviceTag != null) {
+                    "${parsed.serviceTag} · $prefix"
+                } else {
+                    prefix
+                }
+            } else {
+                displayHost = dest
+                subHostDetail = parsed.serviceTag
+            }
+
             RecentRequestRecord(
                 connection = conn,
                 isActive = conn.id in activeIds,
@@ -204,32 +229,38 @@ class TrafficStatisticsViewModel(
                 bottomNodeName = chains.lastOrNull() ?: if (chains.isEmpty()) "DIRECT" else null,
                 sourceAppName = app.appName,
                 sourcePackageName = app.packageName,
+                displayHost = displayHost,
+                subHostDetail = subHostDetail,
             )
         }
 
         val targetSites = allConnections
             .mapNotNull { conn ->
                 val site = conn.extractTargetSite() ?: return@mapNotNull null
-                Triple(site, conn.upload, conn.download) to parseConnectionStartMillis(conn.start)
+                val parsed = DomainClassifier.parse(site)
+                Triple(parsed, conn.upload, conn.download) to parseConnectionStartMillis(conn.start)
             }
-            .groupBy { it.first.first }
-            .map { (siteKey, entries) ->
+            .groupBy { it.first.first.rootDomain }
+            .map { (rootDomain, entries) ->
                 val totalUp = entries.sumOf { it.first.second }
                 val totalDown = entries.sumOf { it.first.third }
                 val lastSeen = entries.maxOfOrNull { it.second } ?: 0L
+                val firstParsed = entries.first().first.first
                 TargetSiteRecord(
-                    siteKey = siteKey,
-                    displayName = siteKey,
+                    siteKey = rootDomain,
+                    displayName = rootDomain,
                     totalUpload = totalUp,
                     totalDownload = totalDown,
                     lastSeenAt = lastSeen,
+                    serviceTag = firstParsed.serviceTag,
+                    connectionCount = entries.size,
                 )
             }
             .sortedWith(
                 compareByDescending<TargetSiteRecord> { it.totalBytes }
                     .thenByDescending { it.lastSeenAt }
             )
-            .take(15)
+            .take(20)
 
         return TrafficStatisticsUiState(
             selectedTimeRange = range,
@@ -367,4 +398,146 @@ fun ConnectionInfo.extractTargetSite(): String? {
     val destIp = metadata["destinationIP"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
     if (destIp.isNotBlank()) return destIp
     return null
+}
+
+object DomainClassifier {
+    private val MULTI_PART_TLDS = setOf(
+        "com.cn", "net.cn", "org.cn", "gov.cn", "edu.cn",
+        "co.uk", "org.uk", "me.uk", "ltd.uk", "plc.uk",
+        "co.jp", "ne.jp", "or.jp", "go.jp", "ac.jp",
+        "co.kr", "ne.kr", "or.kr", "re.kr",
+        "com.hk", "org.hk", "edu.hk", "gov.hk", "net.hk",
+        "com.tw", "org.tw", "edu.tw", "gov.tw", "net.tw",
+        "com.sg", "org.sg", "edu.sg", "gov.sg",
+        "com.au", "net.au", "org.au", "edu.au",
+        "com.br", "net.br", "org.br",
+        "com.mx", "org.mx",
+        "com.ru", "net.ru", "org.ru"
+    )
+
+    private val KNOWN_SERVICES = mapOf(
+        "googlevideo.com" to "YouTube 视频流",
+        "youtube.com" to "YouTube",
+        "youtu.be" to "YouTube",
+        "ytimg.com" to "YouTube 静态资源",
+        "googleapis.com" to "Google API",
+        "google.com" to "Google",
+        "googleusercontent.com" to "Google 资源",
+        "gstatic.com" to "Google 静态资源",
+        "1e100.net" to "Google 骨干网",
+        "gvt1.com" to "Google 视频服务",
+        "gvt2.com" to "Google 视频服务",
+        "ggpht.com" to "Google 相册",
+        "android.com" to "Android 系统",
+        "github.com" to "GitHub",
+        "githubusercontent.com" to "GitHub 资源",
+        "github.io" to "GitHub Pages",
+        "twitter.com" to "X (Twitter)",
+        "x.com" to "X (Twitter)",
+        "twimg.com" to "X 媒体资源",
+        "t.co" to "X 短链接",
+        "telegram.org" to "Telegram",
+        "t.me" to "Telegram",
+        "telegram.me" to "Telegram",
+        "telesco.pe" to "Telegram 视频",
+        "instagram.com" to "Instagram",
+        "cdninstagram.com" to "Instagram 媒体",
+        "facebook.com" to "Facebook",
+        "fbcdn.net" to "Facebook 媒体",
+        "messenger.com" to "Messenger",
+        "whatsapp.com" to "WhatsApp",
+        "whatsapp.net" to "WhatsApp",
+        "netflix.com" to "Netflix",
+        "nflxvideo.net" to "Netflix 视频",
+        "nflximg.net" to "Netflix 媒体",
+        "spotify.com" to "Spotify",
+        "scdn.co" to "Spotify 媒体",
+        "apple.com" to "Apple 服务",
+        "icloud.com" to "iCloud",
+        "mzstatic.com" to "Apple 媒体",
+        "aaplimg.com" to "Apple 资源",
+        "openai.com" to "OpenAI / ChatGPT",
+        "chatgpt.com" to "ChatGPT",
+        "oaistatic.com" to "OpenAI 静态资源",
+        "oaiusercontent.com" to "OpenAI 内容",
+        "anthropic.com" to "Anthropic",
+        "claude.ai" to "Claude AI",
+        "microsoft.com" to "Microsoft",
+        "live.com" to "Microsoft 账户",
+        "office.com" to "Office 365",
+        "azure.com" to "Microsoft Azure",
+        "bing.com" to "Bing 搜索",
+        "msftconnecttest.com" to "Windows 连通性测试",
+        "cloudflare.com" to "Cloudflare",
+        "workers.dev" to "Cloudflare Workers",
+        "bilivideo.com" to "哔哩哔哩视频",
+        "bilivideo.cn" to "哔哩哔哩视频",
+        "bilibili.com" to "哔哩哔哩",
+        "hdslb.com" to "哔哩哔哩静态资源",
+        "biliapi.net" to "哔哩哔哩 API",
+        "tiktok.com" to "TikTok",
+        "tiktokcdn.com" to "TikTok 媒体",
+        "byteoversea.com" to "字节海外",
+        "ibytedtos.com" to "字节媒体 CDN",
+        "douyin.com" to "抖音",
+        "douyincdn.com" to "抖音媒体",
+        "weibo.com" to "微博",
+        "sinaimg.cn" to "微博图片",
+        "qq.com" to "腾讯 QQ",
+        "qpic.cn" to "腾讯图片 CDN",
+        "tencent.com" to "腾讯",
+        "alipay.com" to "支付宝",
+        "taobao.com" to "淘宝",
+        "alicdn.com" to "阿里 CDN",
+        "tmall.com" to "天猫",
+        "baidu.com" to "百度",
+        "bdimg.com" to "百度静态资源"
+    )
+
+    data class NormalizedDomain(
+        val rawHost: String,
+        val rootDomain: String,
+        val serviceTag: String?,
+        val isIp: Boolean,
+        val isCdnSharded: Boolean,
+    )
+
+    fun parse(rawHostWithPort: String): NormalizedDomain {
+        val host = rawHostWithPort.substringBefore(':').trim()
+        if (host.isBlank()) {
+            return NormalizedDomain(rawHostWithPort, "未知目标", null, isIp = false, isCdnSharded = false)
+        }
+
+        if (isIpv4(host) || isIpv6(host)) {
+            val label = if (isIpv6(host)) "IPv6 直连" else "IP 直连"
+            return NormalizedDomain(rawHostWithPort, host, label, isIp = true, isCdnSharded = false)
+        }
+
+        val parts = host.split('.').filter { it.isNotBlank() }
+        if (parts.size <= 2) {
+            val root = host.lowercase()
+            val tag = KNOWN_SERVICES[root]
+            return NormalizedDomain(rawHostWithPort, root, tag, isIp = false, isCdnSharded = false)
+        }
+
+        val lastTwo = "${parts[parts.size - 2]}.${parts.last()}".lowercase()
+        val rootDomain = if (MULTI_PART_TLDS.contains(lastTwo) && parts.size >= 3) {
+            "${parts[parts.size - 3]}.$lastTwo".lowercase()
+        } else {
+            "${parts[parts.size - 2]}.${parts.last()}".lowercase()
+        }
+
+        val serviceTag = KNOWN_SERVICES[rootDomain]
+        val isCdnSharded = (host.startsWith("rr", ignoreCase = true) && host.contains("---")) ||
+                host.startsWith("mcdn.", ignoreCase = true) ||
+                parts[0].length > 16
+
+        return NormalizedDomain(rawHostWithPort, rootDomain, serviceTag, isIp = false, isCdnSharded = isCdnSharded)
+    }
+
+    private fun isIpv4(s: String): Boolean =
+        s.matches(Regex("""^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$"""))
+
+    private fun isIpv6(s: String): Boolean =
+        s.contains(':')
 }

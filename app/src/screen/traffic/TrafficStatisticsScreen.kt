@@ -501,6 +501,12 @@ private fun RecentRequestItemCard(
     val destination = remember(connection) { connection.extractDisplayDestination() }
     val totalTraffic = connection.upload + connection.download
 
+    val displayHost = record.displayHost
+    val effectiveHost = if (displayHost.isNotBlank()) displayHost else destination
+    val sourceAppName = record.sourceAppName
+    val sourcePackageName = record.sourcePackageName
+    val subHost = record.subHostDetail
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -517,20 +523,25 @@ private fun RecentRequestItemCard(
             ) {
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(spacing.space2)) {
                     Text(
-                        text = destination,
+                        text = effectiveHost,
                         style = MiuixTheme.textStyles.body2,
                         color = MiuixTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.Medium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    val sourcePackageName = record.sourcePackageName
+                    val appPart = if (sourcePackageName.isNullOrBlank() || sourcePackageName == sourceAppName) {
+                        sourceAppName
+                    } else {
+                        "$sourceAppName · $sourcePackageName"
+                    }
+                    val subtitleText = if (!subHost.isNullOrBlank()) {
+                        "$appPart · $subHost"
+                    } else {
+                        appPart
+                    }
                     Text(
-                        text = if (sourcePackageName.isNullOrBlank() || sourcePackageName == record.sourceAppName) {
-                            record.sourceAppName
-                        } else {
-                            "${record.sourceAppName} · $sourcePackageName"
-                        },
+                        text = subtitleText,
                         style = MiuixTheme.textStyles.footnote1,
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                         maxLines = 1,
@@ -581,6 +592,15 @@ private fun TargetSiteItemCard(record: TargetSiteRecord) {
     val spacing = AppTheme.spacing
     val radii = AppTheme.radii
 
+    val serviceTag = record.serviceTag
+    val connCount = record.connectionCount
+    val timeText = formatMillisTime(record.lastSeenAt)
+    val subtitleText = if (!serviceTag.isNullOrBlank()) {
+        "$serviceTag · $timeText"
+    } else {
+        timeText
+    }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -604,7 +624,7 @@ private fun TargetSiteItemCard(record: TargetSiteRecord) {
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        text = formatMillisTime(record.lastSeenAt),
+                        text = subtitleText,
                         style = MiuixTheme.textStyles.footnote1,
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                     )
@@ -625,6 +645,9 @@ private fun TargetSiteItemCard(record: TargetSiteRecord) {
             ) {
                 SmallBadge(text = "上行: ${formatBytes(record.totalUpload)}", isPrimary = true)
                 SmallBadge(text = "下行: ${formatBytes(record.totalDownload)}", isPrimary = false)
+                if (connCount > 1) {
+                    SmallBadge(text = "$connCount 个连接", isPrimary = false)
+                }
             }
         }
     }
