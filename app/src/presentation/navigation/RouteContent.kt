@@ -53,7 +53,7 @@ fun RouteContent(route: Route, navigator: Navigator) {
         Route.MetaFeature -> MetaFeatureScreen(navigator)
         Route.Connection -> ConnectionScreen(navigator)
         is Route.ConnectionDetail -> ConnectionDetailScreen(navigator, route.connectionId)
-        Route.TrafficStatistics -> TrafficStatisticsScreen()
+        Route.TrafficStatistics -> TrafficStatisticsScreen(navigator)
         Route.Log -> LogScreen(navigator)
         Route.Rules -> RulesScreen(navigator)
         Route.About -> AboutScreen(navigator)

@@ -14,11 +14,14 @@
 package com.github.yumeyucca.yumebox.screen.moe
 
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -37,8 +40,16 @@ internal fun MoeTrafficStrip(
     downloadSpeed: Long,
     uploadSpeed: Long,
     modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
 ) {
-    Row(modifier, Arrangement.spacedBy(MoeUi.Hero.trafficRowGap), Alignment.CenterVertically) {
+    val clickModifier = if (onClick != null) {
+        Modifier.clip(RoundedCornerShape(AppTheme.radii.radius12)).clickable(onClick = onClick)
+    } else Modifier
+    Row(
+        modifier.then(clickModifier),
+        Arrangement.spacedBy(MoeUi.Hero.trafficRowGap),
+        Alignment.CenterVertically,
+    ) {
         Box(Modifier.weight(1f), Alignment.CenterStart) {
             MoeTrafficItem(YumeTxt.Home.Traffic.UpShort, uploadSpeed)
         }
