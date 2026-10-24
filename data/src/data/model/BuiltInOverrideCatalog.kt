@@ -44,5 +44,5 @@ object BuiltInOverrideCatalog {
 
     fun find(id: String): BuiltInOverrideDefinition? = null
 
-    fun isBuiltIn(id: String): Boolean = false
+    fun isBuiltIn(id: String): Boolean = OverrideInternalConstants.isBuiltInOverrideId(id)
 }
