@@ -105,6 +105,8 @@ jobs:
           files: publish/*.apk
 
       - name: Attest release APKs
+        if: "!github.event.repository.private"
+        continue-on-error: true
         uses: actions/attest-build-provenance@v4.2.2 # v4.2.2
         with:
           subject-path: publish/*.apk
