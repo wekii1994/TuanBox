@@ -54,7 +54,7 @@ object PollingTimerSpecs {
     val SessionConnectionTracking = PollingTimerSpec("session_connection_tracking", 5_000L, 0L)
     val RemoteControllerProbe = PollingTimerSpec("remote_controller_probe", 250L, 250L)
     val HomeIpRefresh = PollingTimerSpec("home_ip_refresh", 15_000L, 0L)
-    val TrafficStatsCollection = PollingTimerSpec("traffic_stats_collection", 15_000L, 0L)
+    val TrafficStatsCollection = PollingTimerSpec("traffic_stats_collection", 3_000L, 0L)
     val ProxyHealthcheckRefresh = PollingTimerSpec("proxy_healthcheck_refresh", 1_500L, 1_500L)
     val ProxyTestingSortHold = PollingTimerSpec("proxy_testing_sort_hold", 2_200L, 2_200L)
     val ProxySwitchFeedback = PollingTimerSpec("proxy_switch_feedback", 500L, 500L)

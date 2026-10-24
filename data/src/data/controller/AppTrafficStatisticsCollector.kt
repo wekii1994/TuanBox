@@ -20,6 +20,7 @@
 
 package com.github.yumeyucca.yumebox.data.controller
 
+import com.github.yumeyucca.yumebox.core.domain.ConnectionHistoryManager
 import com.github.yumeyucca.yumebox.core.model.ConnectionInfo
 import com.github.yumeyucca.yumebox.core.util.PollingTimerSpecs
 import com.github.yumeyucca.yumebox.core.util.PollingTimers
@@ -90,6 +91,7 @@ class AppTrafficStatisticsCollector(
     private suspend fun collectTrafficData() {
         val totalTraffic = querySource.queryTrafficTotal()
         val snapshot = querySource.queryConnections()
+        ConnectionHistoryManager.updateConnections(snapshot.connections)
         val timestamp = System.currentTimeMillis()
         val currentProfileId =
             querySource.currentProfileId()
@@ -209,18 +211,23 @@ class AppTrafficStatisticsCollector(
                 appName = identity.appName,
             )
 
-        if (baseline == null) {
-            connectionBaselines[connection.id] = updatedBaseline
-            return TrafficData.zero
-        }
+        val uploadDelta =
+            if (baseline == null) {
+                connection.upload
+            } else if (connection.upload >= baseline.upload) {
+                connection.upload - baseline.upload
+            } else {
+                0L
+            }
 
-        if (connection.upload < baseline.upload || connection.download < baseline.download) {
-            connectionBaselines[connection.id] = updatedBaseline
-            return TrafficData.zero
-        }
-
-        val uploadDelta = connection.upload - baseline.upload
-        val downloadDelta = connection.download - baseline.download
+        val downloadDelta =
+            if (baseline == null) {
+                connection.download
+            } else if (connection.download >= baseline.download) {
+                connection.download - baseline.download
+            } else {
+                0L
+            }
 
         if (uploadDelta > 0L || downloadDelta > 0L) {
             val routeKey = resolveRouteKey(connection)

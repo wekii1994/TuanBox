@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
 import com.github.yumeyucca.yumebox.common.util.formatBytes
+import com.github.yumeyucca.yumebox.screen.connection.ConnectionDetailHolder
 import com.github.yumeyucca.yumebox.common.util.toast
 import com.github.yumeyucca.yumebox.data.controller.AppIdentityResolver
 import com.github.yumeyucca.yumebox.data.model.AppTrafficUsage
@@ -420,6 +421,10 @@ private fun DetailsSectionCard(
                                     RecentRequestItemCard(
                                         record = request,
                                         onClick = {
+                                            ConnectionDetailHolder.setup(
+                                                info = request.connection,
+                                                canInterrupt = request.isActive,
+                                            )
                                             navigator.push(Route.ConnectionDetail(request.connection.id))
                                         },
                                     )
