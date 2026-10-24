@@ -20,8 +20,6 @@
 
 package com.github.yumeyucca.yumebox.data.controller
 
-import android.content.Context
-import android.os.PowerManager
 import com.github.yumeyucca.yumebox.core.domain.ConnectionHistoryManager
 import com.github.yumeyucca.yumebox.core.model.ConnectionInfo
 import com.github.yumeyucca.yumebox.core.util.PollingTimerSpecs
@@ -39,7 +37,6 @@ class AppTrafficStatisticsCollector(
     private val querySource: TrafficQuerySource,
     private val trafficStatisticsStore: TrafficStatisticsStore,
     private val appIdentityResolver: AppIdentityResolver,
-    private val context: Context? = null,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
 ) {
     private var collectionJob: Job? = null
@@ -48,13 +45,6 @@ class AppTrafficStatisticsCollector(
     private var lastTotalUpload = NO_BASELINE
     private var lastTotalDownload = NO_BASELINE
     private var lastProfileId: String? = null
-
-    private val powerManager by lazy {
-        context?.getSystemService(Context.POWER_SERVICE) as? PowerManager
-    }
-
-    private fun isScreenInteractive(): Boolean =
-        powerManager?.isInteractive ?: true
 
     init {
         startCollection()
@@ -84,73 +74,50 @@ class AppTrafficStatisticsCollector(
         lastTotalDownload = trafficStatisticsStore.getLastTrafficDownload()
         lastProfileId = trafficStatisticsStore.getLastProfileId()
         connectionBaselines.clear()
-
-        var consecutiveIdleTicks = 0
-        while (isActive) {
-            val hadTraffic = collectTrafficDataSafely()
-            val isScreenOn = isScreenInteractive()
-
-            val delayMillis = when {
-                !isScreenOn -> 15_000L // Screen off: relax to 15s to allow CPU deep sleep
-                hadTraffic -> {
-                    consecutiveIdleTicks = 0
-                    2_500L // Active traffic with screen on: responsive 2.5s sampling
-                }
-                else -> {
-                    consecutiveIdleTicks++
-                    when {
-                        consecutiveIdleTicks > 10 -> 8_000L // Screen on but idle > 30s: 8s sampling
-                        consecutiveIdleTicks > 3 -> 5_000L  // Screen on but brief idle: 5s sampling
-                        else -> 2_500L
-                    }
-                }
-            }
-            delay(delayMillis)
+        collectTrafficDataSafely()
+        PollingTimers.ticks(PollingTimerSpecs.TrafficStatsCollection).collect {
+            collectTrafficDataSafely()
         }
     }
 
-    private suspend fun collectTrafficDataSafely(): Boolean =
+    private suspend fun collectTrafficDataSafely() {
         runCatching { collectTrafficData() }
             .onFailure { error ->
                 if (error is CancellationException) throw error
                 Timber.tag(TAG).e(error, "App traffic collection failed")
             }
-            .getOrDefault(false)
+    }
 
-    private suspend fun collectTrafficData(): Boolean {
+    private suspend fun collectTrafficData() {
         val totalTraffic = querySource.queryTrafficTotal()
+        val snapshot = querySource.queryConnections()
+        ConnectionHistoryManager.updateConnections(snapshot.connections)
         val timestamp = System.currentTimeMillis()
         val currentProfileId =
             querySource.currentProfileId()
                 ?: runCatching { querySource.queryActiveProfileId() }.getOrNull()
 
         if (lastTotalUpload < 0L || lastTotalDownload < 0L) {
-            val snapshot = querySource.queryConnections()
-            ConnectionHistoryManager.updateConnections(snapshot.connections)
             initializeTotals(
                 totalTraffic = totalTraffic,
                 profileId = currentProfileId,
                 forcePersist = true,
             )
             bootstrapConnectionBaselines(snapshot.connections)
-            return false
+            return
         }
 
         if (currentProfileId != lastProfileId) {
-            val snapshot = querySource.queryConnections()
-            ConnectionHistoryManager.updateConnections(snapshot.connections)
             initializeTotals(
                 totalTraffic = totalTraffic,
                 profileId = currentProfileId,
                 forcePersist = true,
             )
             bootstrapConnectionBaselines(snapshot.connections)
-            return false
+            return
         }
 
         if (connectionBaselines.isEmpty()) {
-            val snapshot = querySource.queryConnections()
-            ConnectionHistoryManager.updateConnections(snapshot.connections)
             recordUnattributedDeltaIfNeeded(
                 timestamp = timestamp,
                 currentUpload = totalTraffic.upload,
@@ -162,31 +129,18 @@ class AppTrafficStatisticsCollector(
                 forcePersist = true,
             )
             bootstrapConnectionBaselines(snapshot.connections)
-            return false
+            return
         }
 
         if (totalTraffic.upload < lastTotalUpload || totalTraffic.download < lastTotalDownload) {
-            val snapshot = querySource.queryConnections()
-            ConnectionHistoryManager.updateConnections(snapshot.connections)
             initializeTotals(
                 totalTraffic = totalTraffic,
                 profileId = currentProfileId,
                 forcePersist = true,
             )
             bootstrapConnectionBaselines(snapshot.connections)
-            return false
+            return
         }
-
-        val totalUploadDelta = totalTraffic.upload - lastTotalUpload
-        val totalDownloadDelta = totalTraffic.download - lastTotalDownload
-
-        // Fast path: if zero bytes transferred, skip querying connections & DB entirely
-        if (totalUploadDelta <= 0L && totalDownloadDelta <= 0L) {
-            return false
-        }
-
-        val snapshot = querySource.queryConnections()
-        ConnectionHistoryManager.updateConnections(snapshot.connections)
 
         val trafficDeltas = linkedMapOf<String, AppTrafficDeltaRecord>()
         val attributedTotals =
@@ -194,6 +148,8 @@ class AppTrafficStatisticsCollector(
                 connections = snapshot.connections,
                 trafficDeltas = trafficDeltas,
             )
+        val totalUploadDelta = totalTraffic.upload - lastTotalUpload
+        val totalDownloadDelta = totalTraffic.download - lastTotalDownload
         val unattributedUpload = (totalUploadDelta - attributedTotals.upload).coerceAtLeast(0L)
         val unattributedDownload =
             (totalDownloadDelta - attributedTotals.download).coerceAtLeast(0L)
@@ -216,7 +172,6 @@ class AppTrafficStatisticsCollector(
             profileId = currentProfileId,
             forcePersist = false,
         )
-        return true
     }
 
     private fun collectConnectionDeltas(

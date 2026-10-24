@@ -39,7 +39,7 @@ object GlobalUaOverride {
                 .replace("\"", "\\\"")
                 .replace("\n", "\\n")
                 .replace("\r", "\\r")
-        return "global-ua: \"$escaped\"\nfind-process-mode: always\n"
+        return "global-ua: \"$escaped\"\n"
     }
 
     fun materialize(

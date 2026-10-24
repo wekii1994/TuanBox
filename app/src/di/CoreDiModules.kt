@@ -165,7 +165,6 @@ val appDataRuntimeModule = module {
                 },
             trafficStatisticsStore = get(),
             appIdentityResolver = get(),
-            context = androidContext(),
         )
     }
 }
