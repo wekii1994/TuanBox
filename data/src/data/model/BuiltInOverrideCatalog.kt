@@ -42,16 +42,7 @@ class BuiltInOverrideDefinition(
 object BuiltInOverrideCatalog {
     private const val ASSET_DIR = "overrides/builtin"
 
-    val all: List<BuiltInOverrideDefinition> =
-        listOf(
-            BuiltInOverrideDefinition(
-                id = "${OverrideInternalConstants.BUILTIN_OVERRIDE_PREFIX}zashboard",
-                assetPath = "$ASSET_DIR/zashboard.yaml",
-                contentType = OverrideContentType.Yaml,
-                nameProvider = { "zashboard" },
-                description = "YAML",
-            ),
-        )
+    val all: List<BuiltInOverrideDefinition> = emptyList()
 
     fun find(id: String): BuiltInOverrideDefinition? = all.firstOrNull { it.id == id }
 
