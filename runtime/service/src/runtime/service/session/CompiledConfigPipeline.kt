@@ -28,7 +28,6 @@ import com.github.yumeyucca.yumebox.core.model.OverrideSpec
 import com.github.yumeyucca.yumebox.core.util.YamlCodec
 import com.github.yumeyucca.yumebox.data.model.BuiltInOverrideCatalog
 import com.github.yumeyucca.yumebox.data.store.BuiltInOverrideFileStore
-import timber.log.Timber
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
@@ -50,14 +49,11 @@ class CompiledConfigPipeline(private val context: Context) {
                 .orEmpty()
                 .filterNot { it.startsWith(LEGACY_PRESET_PREFIX) || it.startsWith(INTERNAL_RUNTIME_PREFIX) }
                 .distinct()
-                .mapNotNull { overrideId ->
-                    val file = resolveUserOverrideFile(overridesDir, overrideId, metadata)
-                    if (file == null) {
-                        Timber.w("Override config not found for profile=%s id=%s, skipping", profileUuid, overrideId)
-                        null
-                    } else {
-                        file.toOverrideSpec()
-                    }
+                .map { overrideId ->
+                    val file =
+                        resolveUserOverrideFile(overridesDir, overrideId, metadata)
+                            ?: error("Override config not found for profile=$profileUuid id=$overrideId")
+                    file.toOverrideSpec()
                 }
         val internal = resolveRuntimeInternalOverrideFile(overridesDir, profileUuid)?.toOverrideSpec()
         return userOverrides + listOfNotNull(internal)

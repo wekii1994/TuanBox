@@ -23,7 +23,6 @@
 package com.github.yumeyucca.yumebox.data.store
 
 import android.content.Context
-import com.github.yumeyucca.yumebox.data.model.BuiltInOverrideCatalog
 import com.github.yumeyucca.yumebox.data.model.MetadataIndex
 import com.github.yumeyucca.yumebox.data.model.OverrideMetadata
 import com.github.yumeyucca.yumebox.data.model.ProfileBinding
@@ -254,9 +253,7 @@ class ProfileBindingStore(context: Context) : ProfileBindingProvider {
                 binding.overrideIds.filterNot { overrideId ->
                     isLegacyPresetOverrideId(overrideId) ||
                             (overrideId.startsWith(OverrideMetadata.ID_PREFIX) &&
-                                    overrideId !in index.configs) ||
-                            (BuiltInOverrideCatalog.isBuiltIn(overrideId) &&
-                                    BuiltInOverrideCatalog.find(overrideId) == null)
+                                    overrideId !in index.configs)
                 }
         )
 

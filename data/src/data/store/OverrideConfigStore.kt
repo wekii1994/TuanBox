@@ -466,9 +466,7 @@ class OverrideConfigStore(
                         binding.overrideIds.filterNot { id ->
                             isLegacySystemPresetId(id) ||
                                     (id.startsWith(OverrideMetadata.ID_PREFIX) &&
-                                            id !in sanitizedConfigs) ||
-                                    (BuiltInOverrideCatalog.isBuiltIn(id) &&
-                                            BuiltInOverrideCatalog.find(id) == null)
+                                            id !in sanitizedConfigs)
                         }
                 )
             }
