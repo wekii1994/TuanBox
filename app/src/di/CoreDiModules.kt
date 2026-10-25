@@ -71,7 +71,6 @@ val appFoundationModule = module {
     single { ProxyDisplaySettingsStore(get(named("proxy_display"))) }
 
     single { createTrafficStatisticsDao(androidApplication()) }
-    single { TrafficCollector(androidApplication(), get()) }
     single { TrafficStatisticsStore(get(named("traffic_statistics")), get()) }
 }
 
@@ -144,29 +143,41 @@ val appDataRuntimeModule = module {
     single { ProxyFacade(androidContext(), get(), get()) }
     single { AppIdentityResolver(androidContext()) }
     single { ProfilesRepository(androidContext()) }
-    single {
+    single<TrafficQuerySource> {
         val proxyFacade = get<ProxyFacade>()
+        object : TrafficQuerySource {
+            override val isRunning: Flow<Boolean> = proxyFacade.isRunning
+
+            override fun currentProfileId(): String? =
+                proxyFacade.currentProfile.value?.uuid?.toString()
+
+            override suspend fun queryTrafficTotal(): TrafficData =
+                TrafficData.from(proxyFacade.queryTrafficTotal())
+
+            override suspend fun queryTrafficNow(): TrafficData =
+                TrafficData.from(proxyFacade.queryTrafficNow())
+
+            override suspend fun queryConnections(): ConnectionSnapshot =
+                proxyFacade.queryConnections()
+
+            override suspend fun queryActiveProfileId(): String? {
+                proxyFacade.refreshCurrentProfile()
+                return proxyFacade.currentProfile.value?.uuid?.toString()
+            }
+        }
+    }
+    single {
         AppTrafficStatisticsCollector(
-            querySource =
-                object : TrafficQuerySource {
-                    override val isRunning: Flow<Boolean> = proxyFacade.isRunning
-
-                    override fun currentProfileId(): String? =
-                        proxyFacade.currentProfile.value?.uuid?.toString()
-
-                    override suspend fun queryTrafficTotal(): TrafficData =
-                        TrafficData.from(proxyFacade.queryTrafficTotal())
-
-                    override suspend fun queryConnections(): ConnectionSnapshot =
-                        proxyFacade.queryConnections()
-
-                    override suspend fun queryActiveProfileId(): String? {
-                        proxyFacade.refreshCurrentProfile()
-                        return proxyFacade.currentProfile.value?.uuid?.toString()
-                    }
-                },
+            querySource = get(),
             trafficStatisticsStore = get(),
             appIdentityResolver = get(),
+        )
+    }
+    single {
+        TrafficCollector(
+            context = androidApplication(),
+            trafficDao = get(),
+            querySource = get(),
         )
     }
 }

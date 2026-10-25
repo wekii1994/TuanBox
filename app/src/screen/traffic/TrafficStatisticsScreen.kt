@@ -48,12 +48,14 @@ import androidx.compose.ui.unit.sp
 import com.github.yumeyucca.yumebox.data.controller.traffic.TrafficCollector
 import com.github.yumeyucca.yumebox.data.model.traffic.TrafficDimension
 import com.github.yumeyucca.yumebox.data.model.traffic.TrafficRankItem
-import com.github.yumeyucca.yumebox.data.store.room.DimensionTrafficStat
 import com.github.yumeyucca.yumebox.data.store.room.HourlyTrendPoint
 import com.github.yumeyucca.yumebox.data.store.room.TrafficStatisticsDao
+import com.github.yumeyucca.yumebox.presentation.component.CenteredText
+import com.github.yumeyucca.yumebox.presentation.component.TopBar
 import com.github.yumeyucca.yumebox.screen.traffic.component.GlobalTelemetryCard
 import kotlinx.coroutines.flow.sample
 import org.koin.compose.koinInject
+import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -67,7 +69,7 @@ enum class StatisticsTimeRange(val label: String, val durationMs: Long) {
 /**
  * 流量统计高信息密度主界面：
  * 支持 24小时/7天/30天 周期切换、4 维深度透视、实时零重组波形图、
- * 滑动防抖重排、微光呼吸绿点低功耗优化、以及平板/折叠屏 Master-Detail 双栏并列
+ * 滑动防抖重排、微光呼吸绿点低功耗优化、优雅空状态提示、以及平板/折叠屏 Master-Detail 双栏并列
  */
 @OptIn(ExperimentalMaterial3Api::class, kotlinx.coroutines.FlowPreview::class)
 @Composable
@@ -76,6 +78,8 @@ fun TrafficStatisticsScreen(
     trafficDao: TrafficStatisticsDao = koinInject(),
     isFindProcessModeOff: Boolean = false
 ) {
+    val scrollBehavior = MiuixScrollBehavior()
+
     // 监听页面生命周期，进入前台高频采集，离开时降频
     DisposableEffect(Unit) {
         collector.setTrafficPageVisibility(true)
@@ -147,7 +151,18 @@ fun TrafficStatisticsScreen(
     }
 
     Scaffold(
-        containerColor = Color(0xFF0F1115)
+        topBar = {
+            TopBar(
+                title = "流量统计",
+                scrollBehavior = scrollBehavior,
+                actions = {
+                    TimeRangePicker(
+                        selectedRange = selectedTimeRange,
+                        onRangeSelected = { selectedTimeRange = it }
+                    )
+                }
+            )
+        }
     ) { paddingValues ->
         BoxWithConstraints(
             modifier = Modifier
@@ -161,7 +176,7 @@ fun TrafficStatisticsScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 20.dp),
+                        .padding(horizontal = 20.dp, vertical = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(20.dp)
                 ) {
                     Column(
@@ -170,10 +185,6 @@ fun TrafficStatisticsScreen(
                             .fillMaxHeight(),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        TopHeaderSection(
-                            timeRange = selectedTimeRange,
-                            onTimeRangeSelected = { selectedTimeRange = it }
-                        )
                         GlobalTelemetryCard(
                             ringBuffer = collector.ringBuffer,
                             realtimeSpeedState = realtimeSpeedState,
@@ -198,10 +209,9 @@ fun TrafficStatisticsScreen(
                         modifier = Modifier
                             .weight(1.1f)
                             .fillMaxHeight()
-                            .padding(vertical = 16.dp)
                             .clip(RoundedCornerShape(24.dp))
-                            .background(Color(0xFF14161C))
-                            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(24.dp))
+                            .background(MiuixTheme.colorScheme.surface)
+                            .border(1.dp, MiuixTheme.colorScheme.outline.copy(alpha = 0.12f), RoundedCornerShape(24.dp))
                             .padding(20.dp)
                     ) {
                         selectedItemForDetail?.let { item ->
@@ -222,18 +232,13 @@ fun TrafficStatisticsScreen(
                     }
                 }
             } else {
-                // ================= 手机单栏布局（普通 Column 嵌套单一 LazyColumn，杜绝 Crash） =================
+                // ================= 手机单栏布局 =================
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    TopHeaderSection(
-                        timeRange = selectedTimeRange,
-                        onTimeRangeSelected = { selectedTimeRange = it }
-                    )
-
                     GlobalTelemetryCard(
                         ringBuffer = collector.ringBuffer,
                         realtimeSpeedState = realtimeSpeedState,
@@ -265,7 +270,7 @@ fun TrafficStatisticsScreen(
                 ModalBottomSheet(
                     onDismissRequest = { selectedItemForDetail = null },
                     sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-                    containerColor = Color(0xFF14161C),
+                    containerColor = MiuixTheme.colorScheme.surface,
                     shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
                 ) {
                     DetailPaneContent(
@@ -282,7 +287,45 @@ fun TrafficStatisticsScreen(
 }
 
 /**
- * 排行榜列表：滑动时锁定排位，停止滑动后瞬间同步最新 items
+ * 周期切换胶囊组件
+ */
+@Composable
+private fun TimeRangePicker(
+    selectedRange: StatisticsTimeRange,
+    onRangeSelected: (StatisticsTimeRange) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+            .padding(2.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        StatisticsTimeRange.entries.forEach { range ->
+            val isSelected = range == selectedRange
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(if (isSelected) MiuixTheme.colorScheme.primary else Color.Transparent)
+                    .clickable { onRangeSelected(range) }
+                    .padding(horizontal = 10.dp, vertical = 5.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = range.label,
+                    fontSize = 12.sp,
+                    color = if (isSelected) MiuixTheme.colorScheme.onPrimary else MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                )
+            }
+        }
+    }
+}
+
+/**
+ * 排行榜列表：有数据时展示列表，无数据时展示优雅空状态插画
  */
 @Composable
 private fun RankingList(
@@ -292,7 +335,6 @@ private fun RankingList(
     modifier: Modifier = Modifier
 ) {
     val listState = rememberLazyListState()
-
     var displayedItems by remember { mutableStateOf(items) }
 
     LaunchedEffect(items, listState.isScrollInProgress) {
@@ -301,25 +343,40 @@ private fun RankingList(
         }
     }
 
-    val maxTotalBytes = remember(displayedItems) {
-        displayedItems.maxOfOrNull { it.totalBytes }?.coerceAtLeast(1L) ?: 1L
-    }
-
-    LazyColumn(
-        state = listState,
-        modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        items(
-            items = displayedItems,
-            key = { it.identifier }
-        ) { item ->
-            RankListItem(
-                item = item,
-                maxBytes = maxTotalBytes,
-                isSelected = item.identifier == selectedItem?.identifier,
-                onClick = { onItemClick(item) }
+    if (displayedItems.isEmpty()) {
+        Box(
+            modifier = modifier.fillMaxWidth(),
+            contentAlignment = Alignment.Center
+        ) {
+            CenteredText(
+                firstLine = "暂无流量统计数据",
+                secondLine = "当代理启动并产生连接时，将在此按应用、节点、域名和规则透视分析",
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                showEmptyResourceIllustration = true
             )
+        }
+    } else {
+        val maxTotalBytes = remember(displayedItems) {
+            displayedItems.maxOfOrNull { it.totalBytes }?.coerceAtLeast(1L) ?: 1L
+        }
+
+        LazyColumn(
+            state = listState,
+            modifier = modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(bottom = 16.dp)
+        ) {
+            items(
+                items = displayedItems,
+                key = { it.identifier }
+            ) { item ->
+                RankListItem(
+                    item = item,
+                    maxBytes = maxTotalBytes,
+                    isSelected = item.identifier == selectedItem?.identifier,
+                    onClick = { onItemClick(item) }
+                )
+            }
         }
     }
 }
@@ -339,16 +396,23 @@ private fun RankListItem(
     val directPart = (item.directBytes.toFloat() / item.totalBytes.coerceAtLeast(1L)).coerceIn(0f, 1f)
     val rejectPart = (item.rejectBytes.toFloat() / item.totalBytes.coerceAtLeast(1L)).coerceIn(0f, 1f)
 
+    val itemBg = if (isSelected) {
+        MiuixTheme.colorScheme.surfaceVariant
+    } else {
+        MiuixTheme.colorScheme.surface
+    }
+    val itemBorder = if (isSelected) {
+        Color(0xFF00E5FF).copy(alpha = 0.5f)
+    } else {
+        MiuixTheme.colorScheme.outline.copy(alpha = 0.12f)
+    }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(if (isSelected) Color(0xFF1E222B) else Color(0xFF14161C))
-            .border(
-                1.dp,
-                if (isSelected) Color(0xFF00E5FF).copy(alpha = 0.5f) else Color.White.copy(alpha = 0.04f),
-                RoundedCornerShape(16.dp)
-            )
+            .background(itemBg)
+            .border(1.dp, itemBorder, RoundedCornerShape(16.dp))
             .clickable(onClick = onClick)
             .padding(14.dp)
     ) {
@@ -392,7 +456,7 @@ private fun RankListItem(
                     .fillMaxWidth(relativeRatio)
                     .height(6.dp)
                     .clip(RoundedCornerShape(3.dp))
-                    .background(Color.White.copy(alpha = 0.05f))
+                    .background(MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
             ) {
                 Row(modifier = Modifier.fillMaxSize()) {
                     if (proxyPart > 0f) {
@@ -451,47 +515,6 @@ private fun ActiveConnectionIndicator(hasActive: Boolean) {
 }
 
 @Composable
-private fun TopHeaderSection(
-    timeRange: StatisticsTimeRange,
-    onTimeRangeSelected: (StatisticsTimeRange) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 12.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = "流量统计",
-            style = MiuixTheme.textStyles.title2,
-            color = MiuixTheme.colorScheme.onSurface,
-            fontWeight = FontWeight.Bold
-        )
-
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            StatisticsTimeRange.entries.forEach { range ->
-                val isSelected = range == timeRange
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(if (isSelected) Color(0xFF00E5FF).copy(alpha = 0.15f) else Color.Transparent)
-                        .clickable { onTimeRangeSelected(range) }
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    Text(
-                        text = range.label,
-                        fontSize = 12.sp,
-                        color = if (isSelected) Color(0xFF00E5FF) else MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
 private fun MiuixSegmentedControl(
     selected: TrafficDimension,
     onSelect: (TrafficDimension) -> Unit
@@ -499,9 +522,9 @@ private fun MiuixSegmentedControl(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(Color(0xFF14161C))
-            .border(1.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(14.dp))
+            .background(MiuixTheme.colorScheme.surface)
+            .border(1.dp, MiuixTheme.colorScheme.outline.copy(alpha = 0.12f), RoundedCornerShape(14.dp))
             .padding(4.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
@@ -510,8 +533,8 @@ private fun MiuixSegmentedControl(
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(if (isSelected) Color.White.copy(alpha = 0.12f) else Color.Transparent)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (isSelected) MiuixTheme.colorScheme.surfaceVariant else Color.Transparent)
                     .clickable { onSelect(dimension) }
                     .padding(vertical = 8.dp),
                 contentAlignment = Alignment.Center
@@ -519,7 +542,7 @@ private fun MiuixSegmentedControl(
                 Text(
                     text = dimension.displayName,
                     fontSize = 13.sp,
-                    color = if (isSelected) Color.White else MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    color = if (isSelected) MiuixTheme.colorScheme.onSurface else MiuixTheme.colorScheme.onSurfaceVariantSummary,
                     fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
                 )
             }
@@ -571,8 +594,8 @@ fun DetailPaneContent(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
-            .background(Color(0xFF181A20))
-            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(20.dp))
+            .background(MiuixTheme.colorScheme.surface)
+            .border(1.dp, MiuixTheme.colorScheme.outline.copy(alpha = 0.12f), RoundedCornerShape(20.dp))
             .padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {

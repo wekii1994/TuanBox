@@ -35,6 +35,8 @@ interface TrafficQuerySource {
 
     suspend fun queryTrafficTotal(): TrafficData
 
+    suspend fun queryTrafficNow(): TrafficData
+
     suspend fun queryConnections(): ConnectionSnapshot
 
     suspend fun queryActiveProfileId(): String?

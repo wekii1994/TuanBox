@@ -24,27 +24,23 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.content.pm.PackageManager
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.util.LruCache
-import com.github.yumeyucca.yumebox.core.bridge.UnixSocketFactory
+import com.github.yumeyucca.yumebox.core.model.ConnectionSnapshot
+import com.github.yumeyucca.yumebox.data.controller.TrafficQuerySource
 import com.github.yumeyucca.yumebox.data.model.traffic.*
 import com.github.yumeyucca.yumebox.data.store.room.TrafficDimensionRecordEntity
 import com.github.yumeyucca.yumebox.data.store.room.TrafficStatisticsDao
-import io.ktor.client.*
-import io.ktor.client.call.*
-import io.ktor.client.engine.okhttp.*
-import io.ktor.client.plugins.contentnegotiation.*
-import io.ktor.client.request.*
-import io.ktor.serialization.kotlinx.json.*
+import com.github.yumeyucca.yumebox.domain.model.TrafficData
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import timber.log.Timber
-import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -60,11 +56,13 @@ private data class ActiveBaseline(
 
 /**
  * 流量统计核心采集引擎：
+ * 直接对接 YumeBox 统一核心数据通道 [TrafficQuerySource]，
  * 兼顾实时速率绘制、全生命周期自适应节流、长休眠中断与后台增量防漏计机制
  */
 class TrafficCollector(
     private val context: Context,
     private val trafficDao: TrafficStatisticsDao,
+    private val querySource: TrafficQuerySource,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 ) {
 
@@ -91,29 +89,26 @@ class TrafficCollector(
     private val isScreenOn = AtomicBoolean(true)
     private val isAppForeground = AtomicBoolean(false)
     private val isTrafficPageVisible = AtomicBoolean(false)
-    private val isVpnRunning = AtomicBoolean(true)
+    private val isVpnRunning = AtomicBoolean(false)
 
     private var trafficSamplingJob: Job? = null
     private var connectionSamplingJob: Job? = null
     private var periodicFlushJob: Job? = null
     private var screenReceiver: BroadcastReceiver? = null
 
-    private val socketFile = File(context.cacheDir, "mihomo.sock")
-    private val httpClient by lazy {
-        HttpClient(OkHttp) {
-            engine {
-                if (socketFile.exists()) {
-                    config { socketFactory(UnixSocketFactory(socketFile.absolutePath)) }
-                }
-            }
-            install(ContentNegotiation) {
-                json(Json { ignoreUnknownKeys = true; isLenient = true })
-            }
-        }
-    }
-
     init {
         registerScreenStateReceiver()
+        scope.launch {
+            querySource.isRunning.collect { running ->
+                isVpnRunning.set(running)
+                if (!running) {
+                    _realtimeSpeed.value = 0L to 0L
+                    _activeUids.value = emptySet()
+                    _activeHosts.value = emptySet()
+                    _activeNodes.value = emptySet()
+                }
+            }
+        }
         restartSamplingJobs()
     }
 
@@ -160,9 +155,15 @@ class TrafficCollector(
             // 前台浏览态：1s 速率采样供贝塞尔波形图
             trafficSamplingJob = scope.launch {
                 while (isActive) {
-                    val traffic = fetchTraffic()
-                    _realtimeSpeed.value = traffic.down to traffic.up
-                    ringBuffer.push(traffic.down, traffic.up)
+                    if (isVpnRunning.get()) {
+                        val traffic = runCatching { querySource.queryTrafficNow() }
+                            .getOrDefault(TrafficData.zero)
+                        _realtimeSpeed.value = traffic.download to traffic.upload
+                        ringBuffer.push(traffic.download, traffic.upload)
+                    } else {
+                        _realtimeSpeed.value = 0L to 0L
+                        ringBuffer.push(0L, 0L)
+                    }
                     delay(1000L)
                 }
             }
@@ -210,10 +211,12 @@ class TrafficCollector(
     }
 
     private suspend fun sampleConnectionsDelta() {
-        val payload = fetchConnections()
-        val currentConnections = payload.connections
+        val snapshot = runCatching { querySource.queryConnections() }
+            .getOrDefault(ConnectionSnapshot())
+        val currentConnections = snapshot.connections
         val currentHour = System.currentTimeMillis() / 3600_000 * 3600_000
         val currentNetwork = resolveCurrentNetworkType()
+        val currentProfile = querySource.currentProfileId() ?: "default"
 
         val activeIds = HashSet<String>(currentConnections.size)
         val uids = HashSet<Int>()
@@ -226,8 +229,10 @@ class TrafficCollector(
                 // 首个元素为物理出口节点或 DIRECT/REJECT
                 val exitNodeOrDirect = conn.chains.firstOrNull().orEmpty()
                 val category = classifyCategory(conn.rule, exitNodeOrDirect)
-                val host = normalizeHost(conn.metadata.host ?: conn.metadata.destinationIP.orEmpty())
-                val uid = conn.metadata.uid ?: -1
+                val rawHost = conn.metadata["host"]?.jsonPrimitive?.contentOrNull
+                    ?: conn.metadata["destinationIP"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                val host = normalizeHost(rawHost)
+                val uid = conn.metadata["uid"]?.jsonPrimitive?.intOrNull ?: -1
 
                 if (uid > 0) uids.add(uid)
                 if (host.isNotEmpty()) hosts.add(host)
@@ -244,7 +249,7 @@ class TrafficCollector(
                         lastUpload = conn.upload,
                         lastDownload = conn.download
                     )
-                    accumulateLocked(currentHour, uid, host, exitNodeOrDirect, conn.rule, currentNetwork, category, conn.upload + conn.download)
+                    accumulateLocked(currentHour, uid, host, exitNodeOrDirect, conn.rule, currentProfile, currentNetwork, category, conn.upload + conn.download)
                 } else {
                     val upDelta = (conn.upload - baseline.lastUpload).coerceAtLeast(0L)
                     val downDelta = (conn.download - baseline.lastDownload).coerceAtLeast(0L)
@@ -253,7 +258,7 @@ class TrafficCollector(
                     if (totalDelta > 0L) {
                         baseline.lastUpload = conn.upload
                         baseline.lastDownload = conn.download
-                        accumulateLocked(currentHour, baseline.uid, baseline.host, baseline.nodeName, baseline.ruleName, currentNetwork, baseline.category, totalDelta)
+                        accumulateLocked(currentHour, baseline.uid, baseline.host, baseline.nodeName, baseline.ruleName, currentProfile, currentNetwork, baseline.category, totalDelta)
                     }
                 }
             }
@@ -271,8 +276,18 @@ class TrafficCollector(
         _activeNodes.value = nodes
     }
 
-    private fun accumulateLocked(hour: Long, uid: Int, host: String, node: String, rule: String, netType: String, cat: TrafficCategory, bytes: Long) {
-        val key = AggregationKey(hour, uid, host, node, rule, "active_profile", netType)
+    private fun accumulateLocked(
+        hour: Long,
+        uid: Int,
+        host: String,
+        node: String,
+        rule: String,
+        profileId: String,
+        netType: String,
+        cat: TrafficCategory,
+        bytes: Long
+    ) {
+        val key = AggregationKey(hour, uid, host, node, rule, profileId, netType)
         val accumulator = writeBehindAccumulator.computeIfAbsent(key) { MutableTrafficAccumulator() }
         accumulator.add(cat, bytes)
     }
@@ -363,14 +378,6 @@ class TrafficCollector(
             addAction(Intent.ACTION_SCREEN_OFF)
         })
     }
-
-    private suspend fun fetchTraffic(): MihomoTrafficPayload = runCatching {
-        httpClient.get("http://127.0.0.1/traffic").body<MihomoTrafficPayload>()
-    }.getOrDefault(MihomoTrafficPayload(0L, 0L))
-
-    private suspend fun fetchConnections(): FastConnectionsPayload = runCatching {
-        httpClient.get("http://127.0.0.1/connections").body<FastConnectionsPayload>()
-    }.getOrDefault(FastConnectionsPayload())
 
     private fun resolveCurrentNetworkType(): String {
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return "OTHER"

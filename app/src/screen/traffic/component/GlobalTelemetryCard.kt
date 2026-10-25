@@ -63,12 +63,15 @@ fun GlobalTelemetryCard(
     rejectBytes: Long,
     modifier: Modifier = Modifier
 ) {
+    val cardBackground = MiuixTheme.colorScheme.surface
+    val cardBorder = MiuixTheme.colorScheme.outline.copy(alpha = 0.12f)
+
     Box(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(24.dp))
-            .background(Color(0xFF14161C))
-            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(24.dp))
+            .background(cardBackground)
+            .border(1.dp, cardBorder, RoundedCornerShape(24.dp))
             .padding(18.dp)
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
@@ -184,25 +187,33 @@ private fun RoutingEfficiencySection(
     rejectBytes: Long,
     modifier: Modifier = Modifier
 ) {
-    val total = (proxyBytes + directBytes + rejectBytes).coerceAtLeast(1L).toFloat()
-    val proxyRatio = proxyBytes / total
-    val directRatio = directBytes / total
-    val rejectRatio = rejectBytes / total
+    val total = (proxyBytes + directBytes + rejectBytes).toFloat()
+    val hasData = total > 0f
+    val safeTotal = total.coerceAtLeast(1f)
+    val proxyRatio = if (hasData) proxyBytes / safeTotal else 0f
+    val directRatio = if (hasData) directBytes / safeTotal else 0f
+    val rejectRatio = if (hasData) rejectBytes / safeTotal else 0f
 
     val animatedProxy by animateFloatAsState(proxyRatio, tween(600), label = "proxyRatio")
     val animatedDirect by animateFloatAsState(directRatio, tween(600), label = "directRatio")
     val animatedReject by animateFloatAsState(rejectRatio, tween(600), label = "rejectRatio")
+
+    val ringTrackColor = MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
 
     Row(
         modifier = modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // 左侧：三色圆环图 (Donut Chart)
+        // 左侧：三色圆环图 (Donut Chart)，带轨道底色
         Canvas(modifier = Modifier.size(44.dp)) {
             val strokeWidth = 5.dp.toPx()
-            var startAngle = -90f
+            drawCircle(
+                color = ringTrackColor,
+                style = Stroke(strokeWidth)
+            )
 
+            var startAngle = -90f
             val proxySweep = animatedProxy * 360f
             val directSweep = animatedDirect * 360f
             val rejectSweep = animatedReject * 360f
@@ -240,13 +251,13 @@ private fun RoutingEfficiencySection(
 
         // 右侧：三色内嵌比例条与图例
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            // 三色横向胶囊进度条
+            val barTrackColor = MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(8.dp)
                     .clip(RoundedCornerShape(4.dp))
-                    .background(Color.White.copy(alpha = 0.05f))
+                    .background(barTrackColor)
             ) {
                 if (animatedProxy > 0f) {
                     Box(
