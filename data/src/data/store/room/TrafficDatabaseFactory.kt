@@ -39,7 +39,8 @@ fun createTrafficStatisticsDao(context: Context): TrafficStatisticsDao =
         TrafficDatabase::class.java,
         TrafficDatabase.DATABASE_NAME,
     )
-        .addMigrations(TRAFFIC_MIGRATION_1_2)
+        .addMigrations(TRAFFIC_MIGRATION_1_2, TRAFFIC_MIGRATION_2_3)
+        .fallbackToDestructiveMigration()
         .build()
         .trafficStatisticsDao()
 
@@ -57,5 +58,32 @@ private val TRAFFIC_MIGRATION_1_2 =
                 """
                     .trimIndent()
             )
+        }
+    }
+
+private val TRAFFIC_MIGRATION_2_3 =
+    object : Migration(2, 3) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `traffic_dimension_records` (
+                    `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `timestamp_hour` INTEGER NOT NULL,
+                    `uid` INTEGER NOT NULL,
+                    `host` TEXT NOT NULL,
+                    `node_name` TEXT NOT NULL,
+                    `rule_name` TEXT NOT NULL,
+                    `profile_id` TEXT NOT NULL,
+                    `network_type` TEXT NOT NULL,
+                    `proxy_bytes` INTEGER NOT NULL,
+                    `direct_bytes` INTEGER NOT NULL,
+                    `reject_bytes` INTEGER NOT NULL
+                )
+                """.trimIndent()
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_traffic_dimension_records_timestamp_hour_uid` ON `traffic_dimension_records` (`timestamp_hour`, `uid`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_traffic_dimension_records_timestamp_hour_host` ON `traffic_dimension_records` (`timestamp_hour`, `host`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_traffic_dimension_records_timestamp_hour_node_name` ON `traffic_dimension_records` (`timestamp_hour`, `node_name`)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_traffic_dimension_records_timestamp_hour_rule_name` ON `traffic_dimension_records` (`timestamp_hour`, `rule_name`)")
         }
     }

@@ -23,6 +23,7 @@ package com.github.yumeyucca.yumebox.di
 import com.github.yumeyucca.yumebox.common.util.AppLanguageManager
 import com.github.yumeyucca.yumebox.core.model.ConnectionSnapshot
 import com.github.yumeyucca.yumebox.data.controller.*
+import com.github.yumeyucca.yumebox.data.controller.traffic.TrafficCollector
 import com.github.yumeyucca.yumebox.data.network.NetworkInfoService
 import com.github.yumeyucca.yumebox.data.store.*
 import com.github.yumeyucca.yumebox.data.store.room.createTrafficStatisticsDao
@@ -70,6 +71,7 @@ val appFoundationModule = module {
     single { ProxyDisplaySettingsStore(get(named("proxy_display"))) }
 
     single { createTrafficStatisticsDao(androidApplication()) }
+    single { TrafficCollector(androidApplication(), get()) }
     single { TrafficStatisticsStore(get(named("traffic_statistics")), get()) }
 }
 

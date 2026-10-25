@@ -29,9 +29,10 @@ import androidx.room.RoomDatabase
             AppTrafficDailyEntity::class,
             RouteTrafficDailyEntity::class,
             TrafficHourlyEntity::class,
+            TrafficDimensionRecordEntity::class,
         ],
-    version = 2,
-    exportSchema = true,
+    version = 3,
+    exportSchema = false,
 )
 abstract class TrafficDatabase : RoomDatabase() {
     abstract fun trafficStatisticsDao(): TrafficStatisticsDao

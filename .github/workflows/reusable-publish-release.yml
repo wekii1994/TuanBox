@@ -25,6 +25,11 @@ on:
           (CMFA-style Build Pre-Release flow). When false, the release is updated in place.
         required: true
         type: boolean
+      body:
+        description: "Release notes / changelog body"
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: write
@@ -89,6 +94,7 @@ jobs:
         with:
           tag_name: ${{ inputs.release_tag }}
           name: ${{ inputs.release_name }}
+          body: ${{ inputs.body }}
           prerelease: ${{ inputs.prerelease }}
           draft: false
           target_commitish: ${{ github.sha }}
@@ -99,6 +105,8 @@ jobs:
           files: publish/*.apk
 
       - name: Attest release APKs
+        if: "!github.event.repository.private"
+        continue-on-error: true
         uses: actions/attest-build-provenance@v4.2.2 # v4.2.2
         with:
           subject-path: publish/*.apk

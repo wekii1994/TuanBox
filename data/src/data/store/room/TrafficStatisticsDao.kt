@@ -25,6 +25,7 @@ package com.github.yumeyucca.yumebox.data.store.room
 
 import androidx.room.Dao
 import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import com.github.yumeyucca.yumebox.data.model.AppRouteTrafficUsage
@@ -348,6 +349,159 @@ abstract class TrafficStatisticsDao {
 
     @Query("DELETE FROM traffic_hourly")
     protected abstract suspend fun clearAllHourly()
+
+    // endregion
+
+    // region dimension traffic writes & queries
+
+    @Transaction
+    open suspend fun batchFlushAccumulator(records: List<TrafficDimensionRecordEntity>) {
+        records.forEach { record ->
+            val updated = accumulateTraffic(
+                hour = record.timestampHour,
+                uid = record.uid,
+                host = record.host,
+                node = record.nodeName,
+                rule = record.ruleName,
+                profile = record.profileId,
+                net = record.networkType,
+                proxy = record.proxyBytes,
+                direct = record.directBytes,
+                reject = record.rejectBytes
+            )
+            if (updated == 0) {
+                insertSingleDimensionRecord(record)
+            }
+        }
+    }
+
+    @Query(
+        """
+        UPDATE traffic_dimension_records 
+        SET proxy_bytes = proxy_bytes + :proxy,
+            direct_bytes = direct_bytes + :direct,
+            reject_bytes = reject_bytes + :reject
+        WHERE timestamp_hour = :hour 
+          AND uid = :uid 
+          AND host = :host 
+          AND node_name = :node 
+          AND rule_name = :rule 
+          AND profile_id = :profile 
+          AND network_type = :net
+        """
+    )
+    protected abstract suspend fun accumulateTraffic(
+        hour: Long,
+        uid: Int,
+        host: String,
+        node: String,
+        rule: String,
+        profile: String,
+        net: String,
+        proxy: Long,
+        direct: Long,
+        reject: Long
+    ): Int
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    protected abstract suspend fun insertSingleDimensionRecord(entity: TrafficDimensionRecordEntity): Long
+
+    @Query(
+        """
+        SELECT 
+            CAST(uid AS TEXT) AS dimensionKey,
+            SUM(proxy_bytes + direct_bytes + reject_bytes) AS totalBytes,
+            SUM(proxy_bytes) AS proxyBytes,
+            SUM(direct_bytes) AS directBytes,
+            SUM(reject_bytes) AS rejectBytes
+        FROM traffic_dimension_records
+        WHERE timestamp_hour >= :startTime AND timestamp_hour <= :endTime
+        GROUP BY uid
+        ORDER BY totalBytes DESC
+        """
+    )
+    abstract fun queryRankingByApp(startTime: Long, endTime: Long): Flow<List<DimensionTrafficStat>>
+
+    @Query(
+        """
+        SELECT 
+            node_name AS dimensionKey,
+            SUM(proxy_bytes + direct_bytes + reject_bytes) AS totalBytes,
+            SUM(proxy_bytes) AS proxyBytes,
+            SUM(direct_bytes) AS directBytes,
+            SUM(reject_bytes) AS rejectBytes
+        FROM traffic_dimension_records
+        WHERE timestamp_hour >= :startTime AND timestamp_hour <= :endTime AND node_name != ''
+        GROUP BY node_name
+        ORDER BY totalBytes DESC
+        """
+    )
+    abstract fun queryRankingByNode(startTime: Long, endTime: Long): Flow<List<DimensionTrafficStat>>
+
+    @Query(
+        """
+        SELECT 
+            host AS dimensionKey,
+            SUM(proxy_bytes + direct_bytes + reject_bytes) AS totalBytes,
+            SUM(proxy_bytes) AS proxyBytes,
+            SUM(direct_bytes) AS directBytes,
+            SUM(reject_bytes) AS rejectBytes
+        FROM traffic_dimension_records
+        WHERE timestamp_hour >= :startTime AND timestamp_hour <= :endTime AND host != ''
+        GROUP BY host
+        ORDER BY totalBytes DESC
+        """
+    )
+    abstract fun queryRankingByDomain(startTime: Long, endTime: Long): Flow<List<DimensionTrafficStat>>
+
+    @Query(
+        """
+        SELECT 
+            rule_name AS dimensionKey,
+            SUM(proxy_bytes + direct_bytes + reject_bytes) AS totalBytes,
+            SUM(proxy_bytes) AS proxyBytes,
+            SUM(direct_bytes) AS directBytes,
+            SUM(reject_bytes) AS rejectBytes
+        FROM traffic_dimension_records
+        WHERE timestamp_hour >= :startTime AND timestamp_hour <= :endTime AND rule_name != ''
+        GROUP BY rule_name
+        ORDER BY totalBytes DESC
+        """
+    )
+    abstract fun queryRankingByRule(startTime: Long, endTime: Long): Flow<List<DimensionTrafficStat>>
+
+    @Query(
+        """
+        SELECT 
+            COALESCE(SUM(proxy_bytes), 0) AS totalProxyBytes,
+            COALESCE(SUM(direct_bytes), 0) AS totalDirectBytes,
+            COALESCE(SUM(reject_bytes), 0) AS totalRejectBytes
+        FROM traffic_dimension_records
+        WHERE timestamp_hour >= :startTime AND timestamp_hour <= :endTime
+        """
+    )
+    abstract fun queryGlobalEfficiency(startTime: Long, endTime: Long): Flow<GlobalEfficiencyStat>
+
+    @Query(
+        """
+        SELECT 
+            timestamp_hour AS hourTimestamp,
+            SUM(proxy_bytes + direct_bytes + reject_bytes) AS totalBytes
+        FROM traffic_dimension_records
+        WHERE timestamp_hour >= :startTime AND (uid = :uid OR host = :host OR node_name = :node)
+        GROUP BY timestamp_hour
+        ORDER BY timestamp_hour ASC
+        """
+    )
+    abstract suspend fun queryHourlyTrend(
+        startTime: Long,
+        uid: Int = -1,
+        host: String = "",
+        node: String = ""
+    ): List<HourlyTrendPoint>
+
+    @Query("DELETE FROM traffic_dimension_records WHERE timestamp_hour < :cutoffTime")
+    abstract suspend fun purgeOldDimensionRecords(cutoffTime: Long): Int
 
     // endregion
 }

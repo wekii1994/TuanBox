@@ -41,6 +41,7 @@ jniLibs/**/core-version.properties
 *.jks
 *.keystore
 release.keystore
+!.github/signing/release.keystore
 signing.properties
 local.properties
 .env
