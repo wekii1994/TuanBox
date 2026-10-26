@@ -58,7 +58,7 @@ permissions:
 
 jobs:
   prepare:
-    runs-on: macos-26
+    runs-on: ubuntu-latest
     outputs:
       default_apk_name: ${{ steps.stem.outputs.builtin_arm64 }}.apk
       builtin_apk_name: ${{ steps.stem.outputs.builtin_arm64 }}.apk

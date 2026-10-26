@@ -44,7 +44,7 @@ permissions:
 jobs:
   prepare-build:
     name: Prepare Build Meta
-    runs-on: macos-26
+    runs-on: ubuntu-latest
     outputs:
       build_number: ${{ steps.build_number.outputs.value }}
       apk_name_tail: ${{ steps.apk_name.outputs.tail }}
@@ -234,7 +234,7 @@ jobs:
     needs:
       - prepare-build
       - build-variant
-    runs-on: macos-26
+    runs-on: ubuntu-latest
     steps:
       - name: Download builtin APK
         uses: actions/download-artifact@v8.0.2
