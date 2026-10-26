@@ -70,7 +70,6 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import java.time.Instant
-import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlin.math.abs
@@ -86,7 +85,6 @@ fun TrafficStatisticsScreen(navigator: Navigator = LocalNavigator.current) {
     val scrollBehavior = MiuixScrollBehavior()
     val context = LocalContext.current
     val spacing = AppTheme.spacing
-    val componentSizes = AppTheme.sizes
 
     val uiState by viewModel.uiState.collectAsState()
     var selectedDetailSection by rememberSaveable { mutableStateOf(TrafficDetailSection.RECENT_REQUESTS) }
@@ -503,7 +501,7 @@ private fun RecentRequestItemCard(
                 }
 
                 Text(
-                    text = formatConnectionTime(connection.start),
+                    text = formatMillisTime(record.startMillis),
                     style = MiuixTheme.textStyles.footnote1.copy(fontSize = 11.sp),
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                     modifier = Modifier.padding(start = spacing.space4),
@@ -767,23 +765,6 @@ private fun EmptyDetailNotice(message: String) {
 }
 
 private val DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("MM-dd HH:mm")
-
-private fun formatConnectionTime(isoString: String): String {
-    return runCatching {
-        val instant = OffsetDateTime.parse(isoString).toInstant()
-        val now = Instant.now()
-        val diffSeconds = (now.epochSecond - instant.epochSecond).coerceAtLeast(0)
-        when {
-            diffSeconds < 60 -> "刚刚"
-            diffSeconds < 3600 -> "${diffSeconds / 60} 分钟前"
-            diffSeconds < 86400 -> "${diffSeconds / 3600} 小时前"
-            else -> {
-                val zonedDateTime = instant.atZone(ZoneId.systemDefault())
-                zonedDateTime.format(DATE_TIME_FORMATTER)
-            }
-        }
-    }.getOrDefault("刚刚")
-}
 
 private fun formatMillisTime(millis: Long): String {
     if (millis <= 0L) return "刚刚"

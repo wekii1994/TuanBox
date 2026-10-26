@@ -87,7 +87,6 @@ fun ConnectionDetailScreen(navigator: Navigator, connectionId: String) {
             if (match != null) {
                 connection = match
                 canInterrupt = isActive
-                ConnectionDetailHolder.setup(match, isActive)
             } else {
                 context.toast("未找到该连接记录或已失效")
                 navigator.pop()

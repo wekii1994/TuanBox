@@ -54,6 +54,7 @@ data class RecentRequestRecord(
     val serviceTag: String?,
     val displayHost: String,
     val subDetail: String?,
+    val startMillis: Long = 0L,
 )
 
 @Immutable
@@ -100,21 +101,25 @@ class TrafficStatisticsViewModel(
     private val appIdentityResolver = AppIdentityResolver(context)
     private val selectedTimeRange = MutableStateFlow(StatisticsTimeRange.TODAY)
     private val selectedBarIndex = MutableStateFlow(-1)
+    private val refreshTrigger = MutableStateFlow(0L)
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     private val liveConnectionsFlow: Flow<Pair<List<ConnectionInfo>, List<ConnectionInfo>>> =
-        flow {
-            while (true) {
-                val active =
-                    runCatching {
-                        RuntimeAccess.connect(context)
-                        val snapshot = RuntimeAccess.core().queryConnections()
-                        ConnectionHistoryManager.updateConnections(snapshot.connections)
-                        snapshot.connections
-                    }
-                        .getOrDefault(emptyList())
-                val closed = ConnectionHistoryManager.getClosedConnections()
-                emit(Pair(active, closed))
-                delay(2000L)
+        refreshTrigger.flatMapLatest {
+            flow {
+                while (true) {
+                    val active =
+                        runCatching {
+                            RuntimeAccess.connect(context)
+                            val snapshot = RuntimeAccess.core().queryConnections()
+                            ConnectionHistoryManager.updateConnections(snapshot.connections)
+                            snapshot.connections
+                        }
+                            .getOrDefault(emptyList())
+                    val closed = ConnectionHistoryManager.getClosedConnections()
+                    emit(Pair(active, closed))
+                    delay(2000L)
+                }
             }
         }.flowOn(Dispatchers.IO)
 
@@ -172,6 +177,7 @@ class TrafficStatisticsViewModel(
         viewModelScope.launch {
             trafficStatisticsStore.clearAll()
             ConnectionHistoryManager.clear()
+            refreshTrigger.value += 1L
         }
     }
 
@@ -184,7 +190,7 @@ class TrafficStatisticsViewModel(
             .map { conn -> conn to parseConnectionStartMillis(conn.start) }
             .sortedByDescending { it.second }
 
-        val recentRequests = allWithTimestamp.take(30).map { (conn, _) ->
+        val recentRequests = allWithTimestamp.take(30).map { (conn, startMillis) ->
             val resolvedApp = appIdentityResolver.resolve(conn.metadata)
             val hasValidApp = resolvedApp.packageName != null &&
                     resolvedApp.appName.isNotBlank() &&
@@ -235,6 +241,7 @@ class TrafficStatisticsViewModel(
                 serviceTag = parsed.brandEntity.serviceTag ?: parsed.serviceTag,
                 displayHost = displayHost,
                 subDetail = subDetail,
+                startMillis = startMillis,
             )
         }
 

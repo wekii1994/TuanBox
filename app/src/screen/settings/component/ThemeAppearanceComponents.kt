@@ -191,7 +191,7 @@ internal fun ThemeColorPickerSheet(
             val hex = formatThemeSeedHex(initialSeedColorArgb)
             mutableStateOf(TextFieldValue(hex, TextRange(hex.length)))
         }
-    var showAdvancedPicker by remember { mutableStateOf(false) }
+    var showAdvancedPicker by remember(show) { mutableStateOf(false) }
 
     AppActionBottomSheet(
         show = show,
