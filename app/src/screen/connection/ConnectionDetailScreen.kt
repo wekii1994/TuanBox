@@ -30,6 +30,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import com.github.yumeyucca.yumebox.common.util.toast
 import com.github.yumeyucca.yumebox.core.domain.ConnectionHistoryManager
 import com.github.yumeyucca.yumebox.core.model.ConnectionInfo
 import com.github.yumeyucca.yumebox.core.util.PollingTimerSpecs
@@ -87,6 +88,9 @@ fun ConnectionDetailScreen(navigator: Navigator, connectionId: String) {
                 connection = match
                 canInterrupt = isActive
                 ConnectionDetailHolder.setup(match, isActive)
+            } else {
+                context.toast("未找到该连接记录或已失效")
+                navigator.pop()
             }
         }
     }

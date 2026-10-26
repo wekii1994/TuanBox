@@ -22,7 +22,6 @@
 
 package com.github.yumeyucca.yumebox.screen.traffic
 
-import android.content.Context
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn

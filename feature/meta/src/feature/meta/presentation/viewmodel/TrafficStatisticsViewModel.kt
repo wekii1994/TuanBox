@@ -76,7 +76,6 @@ data class TargetSiteRecord(
 data class TrafficStatisticsUiState(
     val selectedTimeRange: StatisticsTimeRange = StatisticsTimeRange.TODAY,
     val summary: DailyTrafficSummary = DailyTrafficSummary.empty,
-    val topApps: List<AppTrafficUsage> = emptyList(),
     val chartBars: List<BarChartItem> = emptyList(),
     val chartAverage: Long = 0L,
     val todayTotal: Long = 0L,
@@ -115,31 +114,29 @@ class TrafficStatisticsViewModel(
         }.flowOn(Dispatchers.IO)
 
     @OptIn(ExperimentalCoroutinesApi::class)
+    private val dailyTotalsFlow: Flow<List<DailyTrafficSummary>> =
+        selectedTimeRange.flatMapLatest { range ->
+            trafficStatisticsStore.getDailyTotalsFlow(range)
+        }
+
     val uiState: StateFlow<TrafficStatisticsUiState> =
         combine(
-            selectedTimeRange,
-            selectedBarIndex,
+            combine(selectedTimeRange, selectedBarIndex, dailyTotalsFlow) { range, barIndex, dailyTotals ->
+                Triple(range, barIndex, dailyTotals)
+            },
             liveConnectionsFlow,
             trafficStatisticsStore.getDailyTotalsFlow(StatisticsTimeRange.WEEK),
             trafficStatisticsStore.getTodayHourlyTotalsFlow(),
-        ) { range, barIndex, (activeConns, closedConns), weekDailyTotals, hourlyTotals ->
-            Triple(range, barIndex, Pair(activeConns, closedConns)) to Pair(weekDailyTotals, hourlyTotals)
-        }.flatMapLatest { (firstPart, secondPart) ->
-            val (range, barIndex, connectionsPair) = firstPart
-            val (weekDailyTotals, hourlyTotals) = secondPart
-            val (activeConns, closedConns) = connectionsPair
-
-            trafficStatisticsStore.getDailyTotalsFlow(range).map { dailyTotals ->
-                buildUiState(
-                    range = range,
-                    selectedBarIndex = barIndex,
-                    dailyTotals = dailyTotals,
-                    weekDailyTotals = weekDailyTotals,
-                    hourlyTotals = hourlyTotals,
-                    activeConns = activeConns,
-                    closedConns = closedConns,
-                )
-            }
+        ) { (range, barIndex, dailyTotals), (activeConns, closedConns), weekDailyTotals, hourlyTotals ->
+            buildUiState(
+                range = range,
+                selectedBarIndex = barIndex,
+                dailyTotals = dailyTotals,
+                weekDailyTotals = weekDailyTotals,
+                hourlyTotals = hourlyTotals,
+                activeConns = activeConns,
+                closedConns = closedConns,
+            )
         }
             .distinctUntilChanged()
             .flowOn(Dispatchers.Default)
@@ -202,7 +199,12 @@ class TrafficStatisticsViewModel(
         }
         val yesterdayKey = calYesterday.timeInMillis
 
-        val todayTotal = weekDailyTotals.firstOrNull { it.dateMillis == todayKey }?.total ?: (totalUpload + totalDownload)
+        val hourlyTotalSum = hourlyTotals.sumOf(HourlyTrafficSummary::total)
+        val todayTotal = if (hourlyTotals.isNotEmpty() || range == StatisticsTimeRange.TODAY) {
+            hourlyTotalSum
+        } else {
+            weekDailyTotals.firstOrNull { it.dateMillis == todayKey }?.total ?: hourlyTotalSum
+        }
         val yesterdayTotal = weekDailyTotals.firstOrNull { it.dateMillis == yesterdayKey }?.total ?: 0L
         val trafficDiff = todayTotal - yesterdayTotal
         val weekTotal = weekDailyTotals.sumOf(DailyTrafficSummary::total)
@@ -611,8 +613,12 @@ object DomainClassifier {
         return NormalizedDomain(rawHostWithPort, rootDomain, brand, brand.serviceTag, isIp = false, isCdnSharded = isCdnSharded)
     }
 
-    private fun isIpv4(s: String): Boolean =
-        IPV4_REGEX.matches(s)
+    private fun isIpv4(s: String): Boolean {
+        if (!IPV4_REGEX.matches(s)) return false
+        return s.split('.').all { part ->
+            part.toIntOrNull()?.let { it in 0..255 } == true
+        }
+    }
 
     private fun isIpv6(s: String): Boolean =
         s.count { it == ':' } >= 2
@@ -620,7 +626,14 @@ object DomainClassifier {
     private fun isPrivateIp(ip: String): Boolean {
         if (isIpv6(ip)) {
             val lower = ip.lowercase()
-            return lower == "::1" || lower.startsWith("fc") || lower.startsWith("fd") || lower.startsWith("fe80")
+            if (lower == "::1" || lower == "0:0:0:0:0:0:0:1") return true
+            val firstHextet = lower.substringBefore(':').padStart(4, '0')
+            return firstHextet.startsWith("fc") ||
+                firstHextet.startsWith("fd") ||
+                firstHextet.startsWith("fe8") ||
+                firstHextet.startsWith("fe9") ||
+                firstHextet.startsWith("fea") ||
+                firstHextet.startsWith("feb")
         }
         val parts = ip.split('.').mapNotNull { it.toIntOrNull() }
         if (parts.size != 4) return false

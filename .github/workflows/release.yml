@@ -84,7 +84,14 @@ jobs:
           ### 📝 更新记录
           EOF
 
-          prev_tag=$(git tag -l "v${base_version}-pre*" "${base_version}-pre*" 2>/dev/null | sort -V | tail -n 1 || true)
+          prev_tag=""
+          if [ -z "${manual_tag}" ]; then
+            prev_tag=$(git tag -l "v${base_version}-pre*" "${base_version}-pre*" 2>/dev/null | sort -V | tail -n 1 || true)
+          fi
+          if [ -z "${prev_tag}" ] || ! git rev-parse "${prev_tag}" >/dev/null 2>&1; then
+            prev_tag=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || true)
+          fi
+
           if [ -n "${prev_tag}" ] && git rev-parse "${prev_tag}" >/dev/null 2>&1; then
             echo "对比上一版本 \`${prev_tag}\` 的提交变更：" >> release_body.md
             git log "${prev_tag}..HEAD" --pretty=format:"- %s (\`%h\`)" --no-merges >> release_body.md || true
@@ -97,10 +104,11 @@ jobs:
           echo "---" >> release_body.md
           echo "> 💡 **提示**：本安装包使用固化的 Android 发布签名密钥构建，后续下载新 Release 版本可直接覆盖升级，保留全部配置与数据。" >> release_body.md
 
+          delimiter="EOF_$(date +%s)_$$"
           {
-            echo "release_body<<EOF"
+            echo "release_body<<${delimiter}"
             cat release_body.md
-            echo "EOF"
+            echo "${delimiter}"
           } >> "$GITHUB_OUTPUT"
 
   prebuild-modules-stable:
