@@ -88,6 +88,11 @@ data class TrafficStatisticsUiState(
     val targetSites: List<TargetSiteRecord> = emptyList(),
 )
 
+private data class ConnectionDetails(
+    val recentRequests: List<RecentRequestRecord> = emptyList(),
+    val targetSites: List<TargetSiteRecord> = emptyList(),
+)
+
 class TrafficStatisticsViewModel(
     private val trafficStatisticsStore: TrafficStatisticsStore,
     private val context: Context,
@@ -119,23 +124,31 @@ class TrafficStatisticsViewModel(
             trafficStatisticsStore.getDailyTotalsFlow(range)
         }
 
+    private val connectionDetailsFlow: Flow<ConnectionDetails> =
+        liveConnectionsFlow
+            .map { (activeConns, closedConns) ->
+                buildConnectionDetails(activeConns, closedConns)
+            }
+            .distinctUntilChanged()
+            .flowOn(Dispatchers.Default)
+
     val uiState: StateFlow<TrafficStatisticsUiState> =
         combine(
             combine(selectedTimeRange, selectedBarIndex, dailyTotalsFlow) { range, barIndex, dailyTotals ->
                 Triple(range, barIndex, dailyTotals)
             },
-            liveConnectionsFlow,
+            connectionDetailsFlow,
             trafficStatisticsStore.getDailyTotalsFlow(StatisticsTimeRange.WEEK),
             trafficStatisticsStore.getTodayHourlyTotalsFlow(),
-        ) { (range, barIndex, dailyTotals), (activeConns, closedConns), weekDailyTotals, hourlyTotals ->
+        ) { (range, barIndex, dailyTotals), connectionDetails, weekDailyTotals, hourlyTotals ->
             buildUiState(
                 range = range,
                 selectedBarIndex = barIndex,
                 dailyTotals = dailyTotals,
                 weekDailyTotals = weekDailyTotals,
                 hourlyTotals = hourlyTotals,
-                activeConns = activeConns,
-                closedConns = closedConns,
+                recentRequests = connectionDetails.recentRequests,
+                targetSites = connectionDetails.targetSites,
             )
         }
             .distinctUntilChanged()
@@ -162,14 +175,112 @@ class TrafficStatisticsViewModel(
         }
     }
 
+    private fun buildConnectionDetails(
+        activeConns: List<ConnectionInfo>,
+        closedConns: List<ConnectionInfo>,
+    ): ConnectionDetails {
+        val activeIds = activeConns.map(ConnectionInfo::id).toSet()
+        val allWithTimestamp = (activeConns + closedConns.filterNot { it.id in activeIds })
+            .map { conn -> conn to parseConnectionStartMillis(conn.start) }
+            .sortedByDescending { it.second }
+
+        val recentRequests = allWithTimestamp.take(30).map { (conn, _) ->
+            val resolvedApp = appIdentityResolver.resolve(conn.metadata)
+            val hasValidApp = resolvedApp.packageName != null &&
+                    resolvedApp.appName.isNotBlank() &&
+                    resolvedApp.appName != "未知应用" &&
+                    resolvedApp.appKey != AppIdentityResolver.UNKNOWN_APP_KEY
+
+            val sourceAppName = if (hasValidApp) resolvedApp.appName else null
+            val dest = conn.extractDisplayDestination()
+            val parsed = DomainClassifier.parse(dest)
+            val port = conn.metadata["destinationPort"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
+            val portSuffix = if (port.isNotBlank() && !dest.contains(':')) ":$port" else ""
+
+            val displayHost: String
+            val subDetail: String?
+
+            if (parsed.isCdnSharded) {
+                val hostOnly = dest.substringBefore(':')
+                val suffix = ".${parsed.rootDomain}"
+                val prefix = if (hostOnly.endsWith(suffix, ignoreCase = true)) {
+                    hostOnly.dropLast(suffix.length)
+                } else {
+                    hostOnly
+                }
+                displayHost = "${parsed.rootDomain}$portSuffix"
+                subDetail = prefix
+            } else {
+                displayHost = if (portSuffix.isNotBlank() && !dest.endsWith(portSuffix)) "$dest$portSuffix" else dest
+                val destIp = conn.metadata["destinationIP"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
+                subDetail = if (destIp.isNotBlank() && destIp != dest) destIp else null
+            }
+
+            val rawExit = conn.chains.lastOrNull()?.trim() ?: if (conn.chains.isEmpty()) "直连" else null
+            val exitNode = when {
+                rawExit.isNullOrBlank() || rawExit.equals("DIRECT", ignoreCase = true) -> "直连"
+                rawExit.contains('|') -> rawExit.substringAfterLast('|').trim()
+                else -> rawExit
+            }
+
+            val rawRule = conn.rulePayload.takeIf(String::isNotBlank) ?: conn.rule.takeIf(String::isNotBlank) ?: "MATCH"
+            val ruleLabel = rawRule.replace("RuleSet(", "").replace("GeoSite(", "").replace(")", "").trim()
+
+            RecentRequestRecord(
+                connection = conn,
+                isActive = conn.id in activeIds,
+                exitNode = exitNode,
+                ruleLabel = ruleLabel,
+                sourceAppName = sourceAppName,
+                serviceTag = parsed.brandEntity.serviceTag ?: parsed.serviceTag,
+                displayHost = displayHost,
+                subDetail = subDetail,
+            )
+        }
+
+        val targetSites = allWithTimestamp
+            .mapNotNull { (conn, startMillis) ->
+                val site = conn.extractTargetSite() ?: return@mapNotNull null
+                val parsed = DomainClassifier.parse(site)
+                Triple(parsed, conn.upload, conn.download) to startMillis
+            }
+            .groupBy { it.first.first.brandEntity.entityKey }
+            .map { (entityKey, entries) ->
+                val totalUp = entries.sumOf { it.first.second }
+                val totalDown = entries.sumOf { it.first.third }
+                val lastSeen = entries.maxOfOrNull { it.second } ?: 0L
+                val firstParsed = entries.first().first.first
+                val brand = firstParsed.brandEntity
+
+                TargetSiteRecord(
+                    siteKey = entityKey,
+                    displayName = brand.displayName,
+                    primaryDomain = brand.primaryDomain,
+                    totalUpload = totalUp,
+                    totalDownload = totalDown,
+                    lastSeenAt = lastSeen,
+                    serviceTag = brand.serviceTag,
+                    connectionCount = entries.size,
+                    isIp = brand.isIp,
+                )
+            }
+            .sortedWith(
+                compareByDescending<TargetSiteRecord> { it.totalBytes }
+                    .thenByDescending { it.lastSeenAt }
+            )
+            .take(20)
+
+        return ConnectionDetails(recentRequests, targetSites)
+    }
+
     private fun buildUiState(
         range: StatisticsTimeRange,
         selectedBarIndex: Int,
         dailyTotals: List<DailyTrafficSummary>,
         weekDailyTotals: List<DailyTrafficSummary>,
         hourlyTotals: List<HourlyTrafficSummary>,
-        activeConns: List<ConnectionInfo>,
-        closedConns: List<ConnectionInfo>,
+        recentRequests: List<RecentRequestRecord>,
+        targetSites: List<TargetSiteRecord>,
     ): TrafficStatisticsUiState {
         val totalUpload = when (range) {
             StatisticsTimeRange.TODAY -> hourlyTotals.sumOf(HourlyTrafficSummary::totalUpload)
@@ -208,90 +319,6 @@ class TrafficStatisticsViewModel(
         val yesterdayTotal = weekDailyTotals.firstOrNull { it.dateMillis == yesterdayKey }?.total ?: 0L
         val trafficDiff = todayTotal - yesterdayTotal
         val weekTotal = weekDailyTotals.sumOf(DailyTrafficSummary::total)
-
-        val activeIds = activeConns.map(ConnectionInfo::id).toSet()
-        val allConnections = (activeConns + closedConns.filterNot { it.id in activeIds })
-            .sortedByDescending { parseConnectionStartMillis(it.start) }
-
-        val recentRequests = allConnections.take(30).map { conn ->
-            val resolvedApp = appIdentityResolver.resolve(conn.metadata)
-            val hasValidApp = resolvedApp.packageName != null &&
-                    resolvedApp.appName.isNotBlank() &&
-                    resolvedApp.appName != "未知应用" &&
-                    resolvedApp.appKey != AppIdentityResolver.UNKNOWN_APP_KEY
-
-            val sourceAppName = if (hasValidApp) resolvedApp.appName else null
-            val dest = conn.extractDisplayDestination()
-            val parsed = DomainClassifier.parse(dest)
-            val port = conn.metadata["destinationPort"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
-            val portSuffix = if (port.isNotBlank() && !dest.contains(':')) ":$port" else ""
-
-            val displayHost: String
-            val subDetail: String?
-
-            if (parsed.isCdnSharded) {
-                val prefix = dest.substringBefore(".${parsed.rootDomain}")
-                displayHost = "${parsed.rootDomain}$portSuffix"
-                subDetail = prefix
-            } else {
-                displayHost = if (portSuffix.isNotBlank() && !dest.endsWith(portSuffix)) "$dest$portSuffix" else dest
-                val destIp = conn.metadata["destinationIP"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
-                subDetail = if (destIp.isNotBlank() && destIp != dest) destIp else null
-            }
-
-            val rawExit = conn.chains.lastOrNull()?.trim() ?: if (conn.chains.isEmpty()) "直连" else null
-            val exitNode = when {
-                rawExit.isNullOrBlank() || rawExit.equals("DIRECT", ignoreCase = true) -> "直连"
-                rawExit.contains('|') -> rawExit.substringAfterLast('|').trim()
-                else -> rawExit
-            }
-
-            val rawRule = conn.rulePayload.takeIf(String::isNotBlank) ?: conn.rule.takeIf(String::isNotBlank) ?: "MATCH"
-            val ruleLabel = rawRule.replace("RuleSet(", "").replace("GeoSite(", "").replace(")", "").trim()
-
-            RecentRequestRecord(
-                connection = conn,
-                isActive = conn.id in activeIds,
-                exitNode = exitNode,
-                ruleLabel = ruleLabel,
-                sourceAppName = sourceAppName,
-                serviceTag = parsed.brandEntity.serviceTag ?: parsed.serviceTag,
-                displayHost = displayHost,
-                subDetail = subDetail,
-            )
-        }
-
-        val targetSites = allConnections
-            .mapNotNull { conn ->
-                val site = conn.extractTargetSite() ?: return@mapNotNull null
-                val parsed = DomainClassifier.parse(site)
-                Triple(parsed, conn.upload, conn.download) to parseConnectionStartMillis(conn.start)
-            }
-            .groupBy { it.first.first.brandEntity.entityKey }
-            .map { (entityKey, entries) ->
-                val totalUp = entries.sumOf { it.first.second }
-                val totalDown = entries.sumOf { it.first.third }
-                val lastSeen = entries.maxOfOrNull { it.second } ?: 0L
-                val firstParsed = entries.first().first.first
-                val brand = firstParsed.brandEntity
-
-                TargetSiteRecord(
-                    siteKey = entityKey,
-                    displayName = brand.displayName,
-                    primaryDomain = brand.primaryDomain,
-                    totalUpload = totalUp,
-                    totalDownload = totalDown,
-                    lastSeenAt = lastSeen,
-                    serviceTag = brand.serviceTag,
-                    connectionCount = entries.size,
-                    isIp = brand.isIp,
-                )
-            }
-            .sortedWith(
-                compareByDescending<TargetSiteRecord> { it.totalBytes }
-                    .thenByDescending { it.lastSeenAt }
-            )
-            .take(20)
 
         return TrafficStatisticsUiState(
             selectedTimeRange = range,
@@ -588,10 +615,7 @@ object DomainClassifier {
         val parts = host.split('.').filter { it.isNotBlank() }
         if (parts.size <= 2) {
             val root = host.lowercase()
-            val lowerHost = host.lowercase()
-            val brand = BRAND_MAP[lowerHost]
-                ?: BRAND_MAP[root]
-                ?: BrandEntity(root, root, root, null, isIp = false)
+            val brand = BRAND_MAP[root] ?: BrandEntity(root, root, root, null, isIp = false)
             return NormalizedDomain(rawHostWithPort, root, brand, brand.serviceTag, isIp = false, isCdnSharded = false)
         }
 

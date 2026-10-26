@@ -37,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -120,44 +121,20 @@ fun TrafficStatisticsScreen(navigator: Navigator = LocalNavigator.current) {
         }
     ) { innerPadding ->
         val mainLikePadding = rememberStandalonePageMainPadding()
-        BoxWithConstraints(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.TopCenter,
+        val isWideLayout = LocalConfiguration.current.screenWidthDp >= 700
+        ScreenLazyColumn(
+            scrollBehavior = scrollBehavior,
+            innerPadding = combinePaddingValues(innerPadding, mainLikePadding),
         ) {
-            val isWideLayout = maxWidth >= 700.dp
-            ScreenLazyColumn(
-                scrollBehavior = scrollBehavior,
-                innerPadding = combinePaddingValues(innerPadding, mainLikePadding),
-            ) {
-                if (isWideLayout) {
-                    item {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = spacing.space16),
-                            horizontalArrangement = Arrangement.spacedBy(spacing.space16),
-                            verticalAlignment = Alignment.Top,
-                        ) {
-                            OverviewSectionCard(
-                                modifier = Modifier.weight(1f),
-                                uiState = uiState,
-                                selectedRangeIndex = selectedRangeIndex,
-                                timeRanges = timeRanges,
-                                isToday = isToday,
-                                onSelectRange = { range -> viewModel.setTimeRange(range) },
-                                onSelectBar = { index -> viewModel.selectBar(index) },
-                            )
-                            DetailsSectionCard(
-                                modifier = Modifier.weight(1f),
-                                uiState = uiState,
-                                navigator = navigator,
-                                selectedSection = selectedDetailSection,
-                                onSectionChange = { selectedDetailSection = it },
-                            )
-                        }
-                    }
-                } else {
-                    item {
+            if (isWideLayout) {
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = spacing.space16),
+                        horizontalArrangement = Arrangement.spacedBy(spacing.space16),
+                        verticalAlignment = Alignment.Top,
+                    ) {
                         OverviewSectionCard(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = spacing.space16),
+                            modifier = Modifier.weight(1f),
                             uiState = uiState,
                             selectedRangeIndex = selectedRangeIndex,
                             timeRanges = timeRanges,
@@ -165,17 +142,36 @@ fun TrafficStatisticsScreen(navigator: Navigator = LocalNavigator.current) {
                             onSelectRange = { range -> viewModel.setTimeRange(range) },
                             onSelectBar = { index -> viewModel.selectBar(index) },
                         )
-                    }
-                    item {
-                        Spacer(modifier = Modifier.height(spacing.space16))
                         DetailsSectionCard(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = spacing.space16),
+                            modifier = Modifier.weight(1f),
                             uiState = uiState,
                             navigator = navigator,
                             selectedSection = selectedDetailSection,
                             onSectionChange = { selectedDetailSection = it },
                         )
                     }
+                }
+            } else {
+                item {
+                    OverviewSectionCard(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = spacing.space16),
+                        uiState = uiState,
+                        selectedRangeIndex = selectedRangeIndex,
+                        timeRanges = timeRanges,
+                        isToday = isToday,
+                        onSelectRange = { range -> viewModel.setTimeRange(range) },
+                        onSelectBar = { index -> viewModel.selectBar(index) },
+                    )
+                }
+                item {
+                    Spacer(modifier = Modifier.height(spacing.space16))
+                    DetailsSectionCard(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = spacing.space16),
+                        uiState = uiState,
+                        navigator = navigator,
+                        selectedSection = selectedDetailSection,
+                        onSectionChange = { selectedDetailSection = it },
+                    )
                 }
             }
         }
@@ -280,8 +276,8 @@ private fun OverviewSectionCard(
                     averageValue = uiState.chartAverage.takeIf { !isToday && it > 0L },
                     averageLabel = YumeTxt.TrafficStatistics.Summary.Average.takeIf { !isToday && uiState.chartAverage > 0L },
                     showSelectionTip = !isToday,
-                    selectedIndex = uiState.selectedBarIndex,
-                    onItemClick = onSelectBar,
+                    selectedIndex = if (isToday) -1 else uiState.selectedBarIndex,
+                    onItemClick = { index -> if (!isToday) onSelectBar(index) },
                     tipTitleFor = { bar ->
                         YumeTxt.TrafficStatistics.Summary.DayTrafficTip.format(bar.label)
                     },
@@ -393,10 +389,10 @@ private fun RecentRequestItemCard(
     val radii = AppTheme.radii
     val colors = AppTheme.colors
     val connection = record.connection
-    val destination = remember(connection) { connection.extractDisplayDestination() }
+    val effectiveHost = remember(record.displayHost, connection) {
+        record.displayHost.ifBlank { connection.extractDisplayDestination() }
+    }
     val totalTraffic = connection.upload + connection.download
-
-    val effectiveHost = record.displayHost.ifBlank { destination }
     val network = remember(connection.metadata) {
         connection.metadata["network"]?.jsonPrimitive?.contentOrNull?.uppercase() ?: "TCP"
     }
