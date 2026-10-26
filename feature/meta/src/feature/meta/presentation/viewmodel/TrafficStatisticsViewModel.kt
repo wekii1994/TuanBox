@@ -23,6 +23,7 @@
 package com.github.yumeyucca.yumebox.feature.meta.presentation.viewmodel
 
 import android.content.Context
+import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.yumeyucca.yumebox.core.domain.ConnectionHistoryManager
@@ -43,6 +44,7 @@ import com.github.yumeyucca.yumebox.core.locale.YumeTxt
 import java.time.OffsetDateTime
 import java.util.*
 
+@Immutable
 data class RecentRequestRecord(
     val connection: ConnectionInfo,
     val isActive: Boolean,
@@ -54,6 +56,7 @@ data class RecentRequestRecord(
     val subDetail: String?,
 )
 
+@Immutable
 data class TargetSiteRecord(
     val siteKey: String,
     val displayName: String,
@@ -69,6 +72,7 @@ data class TargetSiteRecord(
         get() = totalUpload + totalDownload
 }
 
+@Immutable
 data class TrafficStatisticsUiState(
     val selectedTimeRange: StatisticsTimeRange = StatisticsTimeRange.TODAY,
     val summary: DailyTrafficSummary = DailyTrafficSummary.empty,
@@ -138,6 +142,7 @@ class TrafficStatisticsViewModel(
             }
         }
             .distinctUntilChanged()
+            .flowOn(Dispatchers.Default)
             .stateIn(
                 viewModelScope,
                 SharingStarted.WhileSubscribed(5000),
@@ -430,6 +435,8 @@ object DomainClassifier {
         "com.au", "net.au", "org.au",
     )
 
+    private val IPV4_REGEX = Regex("""^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$""")
+
     private val BRAND_MAP = linkedMapOf<String, BrandEntity>()
 
     init {
@@ -545,7 +552,7 @@ object DomainClassifier {
         val trimmed = rawHostWithPort.trim()
         val host: String = when {
             trimmed.startsWith('[') -> trimmed.substringAfter('[').substringBefore(']')
-            trimmed.count { it == ':' } >= 2 -> trimmed.substringBeforeLast(':', trimmed).trim()
+            trimmed.count { it == ':' } >= 2 -> trimmed
             else -> trimmed.substringBefore(':').trim()
         }
 
@@ -579,7 +586,10 @@ object DomainClassifier {
         val parts = host.split('.').filter { it.isNotBlank() }
         if (parts.size <= 2) {
             val root = host.lowercase()
-            val brand = BRAND_MAP[root] ?: BrandEntity(root, root, root, null, isIp = false)
+            val lowerHost = host.lowercase()
+            val brand = BRAND_MAP[lowerHost]
+                ?: BRAND_MAP[root]
+                ?: BrandEntity(root, root, root, null, isIp = false)
             return NormalizedDomain(rawHostWithPort, root, brand, brand.serviceTag, isIp = false, isCdnSharded = false)
         }
 
@@ -590,7 +600,10 @@ object DomainClassifier {
             "${parts[parts.size - 2]}.${parts.last()}".lowercase()
         }
 
-        val brand = BRAND_MAP[rootDomain] ?: BrandEntity(rootDomain, rootDomain, rootDomain, null, isIp = false)
+        val lowerHost = host.lowercase()
+        val brand = BRAND_MAP[lowerHost]
+            ?: BRAND_MAP[rootDomain]
+            ?: BrandEntity(rootDomain, rootDomain, rootDomain, null, isIp = false)
         val isCdnSharded = (host.startsWith("rr", ignoreCase = true) && host.contains("---")) ||
                 host.startsWith("mcdn.", ignoreCase = true) ||
                 parts[0].length > 16
@@ -599,7 +612,7 @@ object DomainClassifier {
     }
 
     private fun isIpv4(s: String): Boolean =
-        s.matches(Regex("""^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$"""))
+        IPV4_REGEX.matches(s)
 
     private fun isIpv6(s: String): Boolean =
         s.count { it == ':' } >= 2

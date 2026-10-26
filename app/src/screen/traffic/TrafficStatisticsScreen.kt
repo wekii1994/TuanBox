@@ -342,16 +342,18 @@ private fun DetailsSectionCard(
                         } else {
                             Column(verticalArrangement = Arrangement.spacedBy(spacing.space10)) {
                                 uiState.recentRequests.forEach { request ->
-                                    RecentRequestItemCard(
-                                        record = request,
-                                        onClick = {
-                                            ConnectionDetailHolder.setup(
-                                                info = request.connection,
-                                                canInterrupt = request.isActive,
-                                            )
-                                            navigator.push(Route.ConnectionDetail(request.connection.id))
-                                        },
-                                    )
+                                    key(request.connection.id) {
+                                        RecentRequestItemCard(
+                                            record = request,
+                                            onClick = {
+                                                ConnectionDetailHolder.setup(
+                                                    info = request.connection,
+                                                    canInterrupt = request.isActive,
+                                                )
+                                                navigator.push(Route.ConnectionDetail(request.connection.id))
+                                            },
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -366,11 +368,13 @@ private fun DetailsSectionCard(
                             }
                             Column(verticalArrangement = Arrangement.spacedBy(spacing.space10)) {
                                 uiState.targetSites.forEachIndexed { index, site ->
-                                    TargetSiteItemCard(
-                                        record = site,
-                                        rank = index + 1,
-                                        maxBytes = maxBytes,
-                                    )
+                                    key(site.siteKey) {
+                                        TargetSiteItemCard(
+                                            record = site,
+                                            rank = index + 1,
+                                            maxBytes = maxBytes,
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -767,6 +771,8 @@ private fun EmptyDetailNotice(message: String) {
     }
 }
 
+private val DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("MM-dd HH:mm")
+
 private fun formatConnectionTime(isoString: String): String {
     return runCatching {
         val instant = OffsetDateTime.parse(isoString).toInstant()
@@ -778,7 +784,7 @@ private fun formatConnectionTime(isoString: String): String {
             diffSeconds < 86400 -> "${diffSeconds / 3600} 小时前"
             else -> {
                 val zonedDateTime = instant.atZone(ZoneId.systemDefault())
-                zonedDateTime.format(DateTimeFormatter.ofPattern("MM-dd HH:mm"))
+                zonedDateTime.format(DATE_TIME_FORMATTER)
             }
         }
     }.getOrDefault("刚刚")
@@ -794,7 +800,7 @@ private fun formatMillisTime(millis: Long): String {
         else -> {
             val instant = Instant.ofEpochMilli(millis)
             val zonedDateTime = instant.atZone(ZoneId.systemDefault())
-            zonedDateTime.format(DateTimeFormatter.ofPattern("MM-dd HH:mm"))
+            zonedDateTime.format(DATE_TIME_FORMATTER)
         }
     }
 }
