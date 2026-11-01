@@ -221,30 +221,29 @@ jobs:
               else ""
           )
 
-          external_packages = []
+          packages = []
           for apk in sorted(publish_dir.glob("*.apk")):
               name = apk.name
               geo_bundled = name.startswith(f"{artifact_prefix}-builtin-")
-              if geo_bundled:
-                  continue
 
               h = hashlib.sha256()
               with apk.open("rb") as f:
                   for chunk in iter(lambda: f.read(1024 * 1024), b""):
                       h.update(chunk)
 
-              external_packages.append({
+              packages.append({
                   "abi": "arm64-v8a",
-                  "geoBundled": False,
+                  "geoBundled": geo_bundled,
                   "fileName": name,
                   "size": apk.stat().st_size,
                   "sha256": h.hexdigest(),
               })
 
-          if len(external_packages) != 1:
-              raise SystemExit(f"Expected exactly one external APK, found {len(external_packages)}")
-          package = external_packages[0]
-          apk_key = f"releases/{channel}/YumeBox-external.apk"
+          if not packages:
+              raise SystemExit("Expected at least one APK in publish directory, found 0")
+          package = packages[0]
+          variant_tag = "builtin" if package["geoBundled"] else "external"
+          apk_key = f"releases/{channel}/YumeBox-{variant_tag}.apk"
           download_url = (
               f"{public_base}/{apk_key}?v={version_code}-{package['sha256'][:8]}"
               if public_base else ""
@@ -261,9 +260,9 @@ jobs:
               "releaseUrl": release_url if channel == "stable" else "",
               "packages": [
                   {
-                      "id": "external-arm64-v8a",
+                      "id": f"{variant_tag}-arm64-v8a",
                       "abi": package["abi"],
-                      "geoBundled": False,
+                      "geoBundled": package["geoBundled"],
                       "fileName": package["fileName"],
                       "downloadUrl": download_url,
                       "size": package["size"],
