@@ -52,8 +52,6 @@ import com.github.yumeyucca.yumebox.feature.meta.presentation.viewmodel.TrafficS
 import com.github.yumeyucca.yumebox.feature.meta.presentation.viewmodel.TrafficStatisticsViewModel
 import com.github.yumeyucca.yumebox.feature.meta.presentation.viewmodel.extractDisplayDestination
 import com.github.yumeyucca.yumebox.presentation.component.*
-import com.github.yumeyucca.yumebox.presentation.navigation.LocalNavigator
-import com.github.yumeyucca.yumebox.presentation.navigation.Navigator
 import com.github.yumeyucca.yumebox.presentation.navigation.Route
 import com.github.yumeyucca.yumebox.presentation.theme.AppTheme
 import com.github.yumeyucca.yumebox.presentation.theme.UiDp
@@ -337,7 +335,7 @@ private fun DetailsSectionCard(
                                     )
                                     if (index < uiState.recentRequests.lastIndex) {
                                         HorizontalDivider(
-                                            modifier = Modifier.padding(start = UiDp.dp64, end = spacing.space16),
+                                            modifier = Modifier.padding(start = 64.dp, end = spacing.space16),
                                             thickness = componentSizes.thinDividerThickness,
                                             color = MiuixTheme.colorScheme.outline.copy(alpha = AppTheme.opacity.outline),
                                         )
@@ -445,8 +443,8 @@ private fun RecentRequestItemCard(
                 horizontalArrangement = Arrangement.spacedBy(spacing.space6),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (record.serviceTag != null) {
-                    SmallBadge(text = record.serviceTag, isPrimary = true)
+                record.serviceTag?.let { tag ->
+                    SmallBadge(text = tag, isPrimary = true)
                 }
                 SmallBadge(text = record.exitNode, isPrimary = false)
                 SmallBadge(text = record.ruleLabel, isPrimary = false)
@@ -529,8 +527,8 @@ private fun TargetSiteItemCard(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false),
                 )
-                if (record.serviceTag != null) {
-                    SmallBadge(text = record.serviceTag, isPrimary = true)
+                record.serviceTag?.let { tag ->
+                    SmallBadge(text = tag, isPrimary = true)
                 }
             }
 

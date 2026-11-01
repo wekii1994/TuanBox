@@ -283,6 +283,7 @@ private fun MoeHeroCard(
 }
 
 @Composable
+context(actions: MoeHomeActions)
 private fun BoxScope.MoeHeroOverlay(
     state: MoeHomeLayoutState,
     headerContent: @Composable BoxScope.() -> Unit = {},
