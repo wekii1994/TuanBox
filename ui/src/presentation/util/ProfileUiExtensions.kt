@@ -18,116 +18,81 @@
  *
  */
 
-@file:Suppress("UnusedReceiverParameter")
-
 package com.github.yumeyucca.yumebox.presentation.util
 
 import com.github.yumeyucca.yumebox.common.util.ByteFormatter
+import com.github.yumeyucca.yumebox.core.util.scaleBytes
 import com.github.yumeyucca.yumebox.runtime.api.Profile
-import com.github.yumeyucca.yumebox.core.locale.YumeTxt
-import java.io.File
-
-val Profile.enabled: Boolean
-    get() = active
-
-val Profile.provider: String?
-    get() = null
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.temporal.ChronoUnit
+import java.util.Locale
+import kotlin.math.pow
 
 val Profile.usedBytes: Long
     get() = upload + download
 
-val Profile.totalBytes: Long?
+private val Profile.totalBytes: Long?
     get() = if (total > 0) total else null
 
-val Profile.expireAt: Long?
+private val Profile.expireAt: Long?
     get() = if (expire > 0) expire else null
 
-val Profile.lastUpdatedAt: Long?
-    get() = if (updatedAt > 0) updatedAt else null
+/** Traffic summary for the card: remaining value expressed in the total's unit, like "0.50 / 100.00 GB". */
+data class ProfileTrafficPreview(
+    val remainingNumber: String,
+    val totalText: String,
+    val ratio: Float,
+    val lowTraffic: Boolean,
+)
 
-fun Profile.getDisplayProvider(): String =
-    when (type) {
-        Profile.Type.Url -> provider ?: YumeTxt.Component.ProfileCard.RemoteSubscription
-        Profile.Type.File -> YumeTxt.Component.ProfileCard.LocalFile
-        Profile.Type.External -> YumeTxt.Component.ProfileCard.LocalConfig
-    }
-
-fun Profile.getInfoText(): String =
-    when (type) {
-        Profile.Type.Url -> {
-            buildString {
-                val totalBytesValue = totalBytes
-                if (totalBytesValue != null && totalBytesValue > 0) {
-                    val usedPercent = usedBytes * 100 / totalBytesValue
-                    append(
-                        YumeTxt.Component.ProfileCard.Traffic.format(
-                            ByteFormatter.format(usedBytes),
-                            ByteFormatter.format(totalBytesValue),
-                            usedPercent.toInt(),
-                        )
-                    )
-                } else if (usedBytes > 0) {
-                    append(
-                        YumeTxt.Component.ProfileCard.UsedTraffic.format(
-                            ByteFormatter.format(usedBytes)
-                        )
-                    )
-                } else {
-                    append(YumeTxt.Component.ProfileCard.ClickToUpdate)
-                }
-
-                expireAt?.let { expireTime ->
-                    val expireDate =
-                        java.time.Instant.ofEpochMilli(expireTime)
-                            .atZone(java.time.ZoneId.systemDefault())
-                            .toLocalDate()
-                    val now = java.time.LocalDate.now()
-                    val daysLeft = java.time.temporal.ChronoUnit.DAYS.between(now, expireDate)
-
-                    if (isNotEmpty()) append("\n")
-
-                    if (daysLeft > 0) {
-                        append(
-                            YumeTxt.Component.ProfileCard.ExpireAt.format(
-                                expireDate,
-                                daysLeft.toInt(),
-                            )
-                        )
-                    } else if (daysLeft == 0L) {
-                        append(YumeTxt.Component.ProfileCard.ExpireToday)
-                    } else {
-                        append(YumeTxt.Component.ProfileCard.Expired.format(expireDate))
-                    }
-                }
-
-                lastUpdatedAt?.let { updated ->
-                    if (isNotEmpty()) append(" | ")
-                    append(getRelativeTimeString(updated))
-                }
+val Profile.trafficPreview: ProfileTrafficPreview?
+    get() {
+        val totalBytesValue = totalBytes ?: return null
+        val remainingBytes = (totalBytesValue - usedBytes).coerceAtLeast(0L)
+        val scaledTotal = scaleBytes(totalBytesValue)
+        val remainingNumber =
+            if (scaledTotal.rank == 0) {
+                remainingBytes.toString()
+            } else {
+                String.format(
+                    Locale.ROOT,
+                    "%.2f",
+                    remainingBytes / 1024.0.pow(scaledTotal.rank),
+                )
             }
-        }
-
-        Profile.Type.File -> YumeTxt.Component.ProfileCard.LocalConfig
-        Profile.Type.External -> YumeTxt.Component.ProfileCard.LocalConfig
+        // totalBytes is non-null only when total > 0, so the division is safe.
+        val ratio = (remainingBytes.toFloat() / totalBytesValue).coerceIn(0f, 1f)
+        return ProfileTrafficPreview(
+            remainingNumber = remainingNumber,
+            totalText = ByteFormatter.format(totalBytesValue),
+            ratio = ratio,
+            lowTraffic = ratio <= 0.2f,
+        )
     }
 
-fun Profile.shouldShowUpdateButton(): Boolean = type == Profile.Type.Url
+/** Expiry summary for the card's right-side badge. */
+data class ProfileExpiryPreview(
+    val daysLeft: Long,
+    val dateText: String,
+    val warning: Boolean,
+)
 
-fun Profile.isConfigSaved(workDir: File): Boolean = File(workDir, "$uuid/config.yaml").exists()
-
-private fun getRelativeTimeString(timestamp: Long): String {
-    val now = System.currentTimeMillis()
-    val diff = now - timestamp
-    val minutes = diff / (1000 * 60)
-    val hours = diff / (1000 * 60 * 60)
-
-    return when {
-        diff < 60 * 1000 -> YumeTxt.Component.ProfileCard.JustNow
-        minutes < 60 -> YumeTxt.Component.ProfileCard.MinutesAgo.format(minutes.toInt())
-        hours < 24 -> YumeTxt.Component.ProfileCard.HoursAgo.format(hours.toInt())
-        else -> {
-            val days = diff / (1000 * 60 * 60 * 24)
-            YumeTxt.Component.ProfileCard.DaysAgo.format(days.toInt())
-        }
+val Profile.expiryPreview: ProfileExpiryPreview?
+    get() {
+        val expireAtValue = expireAt ?: return null
+        val date =
+            Instant.ofEpochMilli(expireAtValue)
+                .atZone(ZoneId.systemDefault())
+                .toLocalDate()
+        val daysLeft = ChronoUnit.DAYS.between(LocalDate.now(), date)
+        return ProfileExpiryPreview(
+            daysLeft = daysLeft,
+            dateText = date.toString(),
+            warning = daysLeft <= EXPIRY_WARNING_DAYS,
+        )
     }
-}
+
+private const val EXPIRY_WARNING_DAYS = 10L
+

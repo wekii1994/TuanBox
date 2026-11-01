@@ -20,6 +20,7 @@
 package com.github.yumeyucca.yumebox.screen.settings.backup
 
 import com.github.yumeyucca.yumebox.data.store.*
+import com.github.yumeyucca.yumebox.data.model.RemoteBackend
 import com.github.yumeyucca.yumebox.runtime.client.ProxyFacade
 import com.github.yumeyucca.yumebox.runtime.service.config.ServiceStore
 import com.github.yumeyucca.yumebox.runtime.service.profile.ProfileStore
@@ -60,9 +61,11 @@ internal class BackupStoreAdapter(
                     moeWallpaperBiasX = appSettings.moeWallpaperBiasX.value,
                     moeWallpaperBiasY = appSettings.moeWallpaperBiasY.value,
                     moeHomeQuote = appSettings.moeHomeQuote.value,
+                    moeHomeQuoteAuthor = appSettings.moeHomeQuoteAuthor.value,
                     moeSidebarExpanded = appSettings.moeSidebarExpanded.value,
                     pageScale = appSettings.pageScale.value,
                     customUserAgent = appSettings.customUserAgent.value,
+                    autoCheckUpdate = appSettings.autoCheckUpdate.value,
                 ),
             networkSettings =
                 NetworkSettingsBackup(
@@ -88,6 +91,7 @@ internal class BackupStoreAdapter(
                     accessControlSelectedFirst = networkSettings.accessControlSelectedFirst.value,
                     accessControlShowSystemApps = networkSettings.accessControlShowSystemApps.value,
                     accessControlSortMode = networkSettings.accessControlSortMode.value,
+                    accessControlImportStrategy = networkSettings.accessControlImportStrategy.value,
                 ),
             featureSettings =
                 FeatureSettingsBackup(
@@ -177,9 +181,11 @@ internal class BackupStoreAdapter(
             appSettings.moeWallpaperBiasX,
             appSettings.moeWallpaperBiasY,
             appSettings.moeHomeQuote,
+            appSettings.moeHomeQuoteAuthor,
             appSettings.moeSidebarExpanded,
             appSettings.pageScale,
             appSettings.customUserAgent,
+            appSettings.autoCheckUpdate,
         )
         refreshAfterRawStoreClear(
             networkSettings.runMode,
@@ -204,6 +210,7 @@ internal class BackupStoreAdapter(
             networkSettings.accessControlSelectedFirst,
             networkSettings.accessControlShowSystemApps,
             networkSettings.accessControlSortMode,
+            networkSettings.accessControlImportStrategy,
         )
         refreshAfterRawStoreClear(
             featureSettings.allowLanAccess,
@@ -254,9 +261,11 @@ internal class BackupStoreAdapter(
         appSettings.moeWallpaperBiasX.set(value.moeWallpaperBiasX)
         appSettings.moeWallpaperBiasY.set(value.moeWallpaperBiasY)
         appSettings.moeHomeQuote.set(value.moeHomeQuote)
+        appSettings.moeHomeQuoteAuthor.set(value.moeHomeQuoteAuthor)
         appSettings.moeSidebarExpanded.set(value.moeSidebarExpanded)
         appSettings.pageScale.set(value.pageScale)
         appSettings.customUserAgent.set(value.customUserAgent)
+        appSettings.autoCheckUpdate.set(value.autoCheckUpdate)
     }
 
     private fun applyNetworkSettings(value: NetworkSettingsBackup) {
@@ -282,6 +291,7 @@ internal class BackupStoreAdapter(
         networkSettings.accessControlSelectedFirst.set(value.accessControlSelectedFirst)
         networkSettings.accessControlShowSystemApps.set(value.accessControlShowSystemApps)
         networkSettings.accessControlSortMode.set(value.accessControlSortMode)
+        networkSettings.accessControlImportStrategy.set(value.accessControlImportStrategy)
     }
 
     private fun applyFeatureSettings(value: FeatureSettingsBackup) {
@@ -321,6 +331,77 @@ internal class BackupStoreAdapter(
         ProfileStore.saveProfileOrder(value.profileOrder.map(UUID::fromString))
     }
 }
+
+internal fun mergeBackupPayload(local: BackupPayload, backup: BackupPayload): BackupPayload =
+    local.copy(
+        networkSettings =
+            local.networkSettings.copy(
+                tunRouteExcludeAddress =
+                    mergeLocalFirst(
+                        local.networkSettings.tunRouteExcludeAddress,
+                        backup.networkSettings.tunRouteExcludeAddress,
+                    ),
+                tunIncludeAndroidUser =
+                    mergeLocalFirst(
+                        local.networkSettings.tunIncludeAndroidUser,
+                        backup.networkSettings.tunIncludeAndroidUser,
+                    ),
+                accessControlPackages =
+                    local.networkSettings.accessControlPackages +
+                        backup.networkSettings.accessControlPackages,
+            ),
+        profileLinks =
+            local.profileLinks.copy(
+                links =
+                    mergeLocalFirst(
+                        local.profileLinks.links,
+                        backup.profileLinks.links,
+                        ProfileLink::id,
+                    ),
+                defaultLinkId =
+                    local.profileLinks.defaultLinkId.ifBlank {
+                        backup.profileLinks.defaultLinkId
+                    },
+            ),
+        remoteController =
+            local.remoteController.copy(
+                backends =
+                    mergeLocalFirst(
+                        local.remoteController.backends,
+                        backup.remoteController.backends,
+                        RemoteBackend::id,
+                    ),
+                activeBackendId =
+                    local.remoteController.activeBackendId.ifBlank {
+                        backup.remoteController.activeBackendId
+                    },
+            ),
+        profiles =
+            local.profiles.copy(
+                imported =
+                    mergeLocalFirst(
+                        local.profiles.imported,
+                        backup.profiles.imported,
+                        ImportedBackup::uuid,
+                    ),
+                profileOrder =
+                    mergeLocalFirst(local.profiles.profileOrder, backup.profiles.profileOrder),
+            ),
+        service =
+            local.service.copy(
+                activeProfile = local.service.activeProfile ?: backup.service.activeProfile
+            ),
+    )
+
+private fun <T> mergeLocalFirst(local: List<T>, backup: List<T>): List<T> =
+    (local + backup).distinct()
+
+private fun <T, K> mergeLocalFirst(
+    local: List<T>,
+    backup: List<T>,
+    key: (T) -> K,
+): List<T> =
+    (local + backup).distinctBy(key)
 
 internal fun refreshAfterRawStoreClear(vararg preferences: Preference<*>) {
     preferences.forEach { it.refresh() }

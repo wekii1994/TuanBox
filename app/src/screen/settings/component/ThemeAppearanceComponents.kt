@@ -28,7 +28,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -38,16 +42,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.github.yumeyucca.yumebox.data.model.ThemeMode
 import com.github.yumeyucca.yumebox.presentation.component.AppActionBottomSheet
-import com.github.yumeyucca.yumebox.presentation.component.AppBottomSheetCloseAction
 import com.github.yumeyucca.yumebox.presentation.component.AppBottomSheetConfirmAction
-import com.github.yumeyucca.yumebox.presentation.component.EnumSelector
 import com.github.yumeyucca.yumebox.presentation.component.OemTextField
 import com.github.yumeyucca.yumebox.presentation.icon.Yume
 import com.github.yumeyucca.yumebox.presentation.icon.yume.Check
 import com.github.yumeyucca.yumebox.presentation.icon.yume.Palette
-import com.github.yumeyucca.yumebox.presentation.theme.DEFAULT_CUSTOM_THEME_SEED_ARGB
+import com.github.yumeyucca.yumebox.presentation.theme.DEFAULT_THEME_SEED_ARGB
 import com.github.yumeyucca.yumebox.presentation.theme.UiDp
 import com.github.yumeyucca.yumebox.presentation.theme.colorFromArgb
 import com.github.yumeyucca.yumebox.presentation.theme.colorToArgbLong
@@ -66,7 +67,7 @@ data class ClassicThemeColorPreset(
 )
 
 val CLASSIC_THEME_PRESETS = listOf(
-    ClassicThemeColorPreset("极光青", DEFAULT_CUSTOM_THEME_SEED_ARGB, "#016888"),
+    ClassicThemeColorPreset("极光青", DEFAULT_THEME_SEED_ARGB, "#016888"),
     ClassicThemeColorPreset("蔚蓝海洋", 0xFF1976D2L, "#1976D2"),
     ClassicThemeColorPreset("晴朗天蓝", 0xFF0288D1L, "#0288D1"),
     ClassicThemeColorPreset("薄荷翠绿", 0xFF2E7D32L, "#2E7D32"),
@@ -81,56 +82,11 @@ val CLASSIC_THEME_PRESETS = listOf(
 )
 
 @Composable
-internal fun ThemeModeAndColorItems(
-    themeMode: ThemeMode,
-    onThemeModeChange: (ThemeMode) -> Unit,
-    themeSeedColorArgb: Long,
-    onThemeSeedColorChange: (Long) -> Unit,
-) {
-    ThemeModeSelectorItem(themeMode = themeMode, onThemeModeChange = onThemeModeChange)
-    ThemeColorPickerItem(
-        themeSeedColorArgb = themeSeedColorArgb,
-        onThemeSeedColorChange = onThemeSeedColorChange,
-    )
-}
-
-@Composable
-internal fun ThemeModeSelectorItem(themeMode: ThemeMode, onThemeModeChange: (ThemeMode) -> Unit) {
-    EnumSelector(
-        title = YumeTxt.AppSettings.Interface.ThemeModeTitle,
-        summary = YumeTxt.AppSettings.Interface.ThemeModeSummary,
-        currentValue = themeMode,
-        items =
-            listOf(
-                YumeTxt.AppSettings.Interface.ThemeModeSystem,
-                YumeTxt.AppSettings.Interface.ThemeModeLight,
-                YumeTxt.AppSettings.Interface.ThemeModeDark,
-            ),
-        values = ThemeMode.entries,
-        onValueChange = onThemeModeChange,
-    )
-}
-
-@Composable
 internal fun ThemeColorPickerItem(
     themeSeedColorArgb: Long,
     onThemeSeedColorChange: (Long) -> Unit,
 ) {
-    ThemeColorPickerItem(
-        themeSeedColorArgb = themeSeedColorArgb,
-        onThemeSeedColorChange = onThemeSeedColorChange,
-        showBottomSheetInPlace = true,
-    )
-}
-
-@Composable
-internal fun ThemeColorPickerItem(
-    themeSeedColorArgb: Long,
-    onThemeSeedColorChange: (Long) -> Unit,
-    showBottomSheetInPlace: Boolean,
-    onOpenPickerRequest: (() -> Unit)? = null,
-) {
-    val showThemeColorPicker = remember { mutableStateOf(false) }
+    var showThemeColorPicker by remember { mutableStateOf(false) }
 
     BasicComponent(
         title = YumeTxt.AppSettings.Interface.ColorThemeTitle,
@@ -138,13 +94,7 @@ internal fun ThemeColorPickerItem(
             YumeTxt.AppSettings.Interface.ColorThemeCustomSummary.format(
                 formatThemeSeedHex(themeSeedColorArgb)
             ),
-        onClick = {
-            if (showBottomSheetInPlace) {
-                showThemeColorPicker.value = true
-            } else {
-                onOpenPickerRequest?.invoke()
-            }
-        },
+        onClick = { showThemeColorPicker = true },
         endActions = {
             val previewColor =
                 remember(themeSeedColorArgb) {
@@ -159,17 +109,15 @@ internal fun ThemeColorPickerItem(
         },
     )
 
-    if (showBottomSheetInPlace) {
-        ThemeColorPickerSheet(
-            show = showThemeColorPicker.value,
-            initialSeedColorArgb = themeSeedColorArgb,
-            onDismissRequest = { showThemeColorPicker.value = false },
-            onConfirm = { argb ->
-                onThemeSeedColorChange(argb)
-                showThemeColorPicker.value = false
-            },
-        )
-    }
+    ThemeColorPickerSheet(
+        show = showThemeColorPicker,
+        initialSeedColorArgb = themeSeedColorArgb,
+        onDismissRequest = { showThemeColorPicker = false },
+        onConfirm = { argb ->
+            onThemeSeedColorChange(argb)
+            showThemeColorPicker = false
+        },
+    )
 }
 
 @Composable
@@ -178,15 +126,14 @@ internal fun ThemeColorPickerSheet(
     initialSeedColorArgb: Long,
     onDismissRequest: () -> Unit,
     onConfirm: (Long) -> Unit,
-    renderInRootScaffold: Boolean = true,
 ) {
-    val pickerColor =
+    var pickerColor by
         remember(show, initialSeedColorArgb) {
             mutableStateOf(
                 runCatching { colorFromArgb(initialSeedColorArgb) }.getOrDefault(Color.White)
             )
         }
-    val hexField =
+    var hexField by
         remember(show, initialSeedColorArgb) {
             val hex = formatThemeSeedHex(initialSeedColorArgb)
             mutableStateOf(TextFieldValue(hex, TextRange(hex.length)))
@@ -195,96 +142,91 @@ internal fun ThemeColorPickerSheet(
 
     AppActionBottomSheet(
         show = show,
-        modifier = Modifier,
         title = YumeTxt.AppSettings.Interface.ColorThemePickerTitle,
         onDismissRequest = onDismissRequest,
-        enableNestedScroll = true,
-        renderInRootScaffold = renderInRootScaffold,
         defaultWindowInsetsPadding = false,
-        startAction = { AppBottomSheetCloseAction(onClick = onDismissRequest) },
         endAction = {
-            AppBottomSheetConfirmAction(onClick = { onConfirm(colorToArgbLong(pickerColor.value)) })
+            AppBottomSheetConfirmAction(onClick = { onConfirm(colorToArgbLong(pickerColor)) })
         },
         content = {
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .navigationBarsPadding()
-                    .imePadding()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .imePadding(),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                // Header Row: Section Title + Reset to Default Button
+                // Preset Header and "恢复默认配色" button
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = "推荐经典配色",
-                        style = MiuixTheme.textStyles.title3,
+                        text = "经典主题预设",
+                        style = MiuixTheme.textStyles.body1,
+                        fontWeight = FontWeight.Bold,
                         color = MiuixTheme.colorScheme.onSurface,
-                        fontWeight = FontWeight.SemiBold,
                     )
                     TextButton(
                         text = "恢复默认配色",
                         onClick = {
-                            val defaultColor = colorFromArgb(DEFAULT_CUSTOM_THEME_SEED_ARGB)
-                            pickerColor.value = defaultColor
-                            val hex = formatThemeSeedHex(DEFAULT_CUSTOM_THEME_SEED_ARGB)
-                            hexField.value = TextFieldValue(hex, TextRange(hex.length))
+                            val defaultColor = colorFromArgb(DEFAULT_THEME_SEED_ARGB)
+                            pickerColor = defaultColor
+                            val hex = formatThemeSeedHex(DEFAULT_THEME_SEED_ARGB)
+                            hexField = TextFieldValue(hex, TextRange(hex.length))
                         },
                     )
                 }
 
-                // Grid of Color Circles (4 columns)
-                val currentHex = formatThemeSeedHex(colorToArgbLong(pickerColor.value))
+                // Swatch grid (4 columns)
+                val rows = remember { CLASSIC_THEME_PRESETS.chunked(4) }
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    CLASSIC_THEME_PRESETS.chunked(4).forEach { rowPresets ->
+                    rows.forEach { rowPresets ->
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceAround,
-                            verticalAlignment = Alignment.Top,
+                            horizontalArrangement = Arrangement.SpaceEvenly,
                         ) {
                             rowPresets.forEach { preset ->
-                                val isSelected = currentHex.equals(preset.hex, ignoreCase = true)
-                                val swatchColor = colorFromArgb(preset.argb)
+                                val presetColor = remember(preset.argb) { colorFromArgb(preset.argb) }
+                                val isSelected = remember(pickerColor, preset.argb) {
+                                    val currentArgb = colorToArgbLong(pickerColor)
+                                    (currentArgb and 0x00FFFFFFL) == (preset.argb and 0x00FFFFFFL)
+                                }
 
                                 Column(
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                     verticalArrangement = Arrangement.spacedBy(6.dp),
                                     modifier = Modifier
+                                        .weight(1f)
                                         .clickable(
                                             interactionSource = remember { MutableInteractionSource() },
                                             indication = null,
                                             onClick = {
-                                                pickerColor.value = swatchColor
-                                                hexField.value = TextFieldValue(preset.hex, TextRange(preset.hex.length))
+                                                pickerColor = presetColor
+                                                val hex = formatThemeSeedHex(preset.argb)
+                                                hexField = TextFieldValue(hex, TextRange(hex.length))
                                             },
-                                        )
-                                        .padding(4.dp),
+                                        ),
                                 ) {
                                     Box(
                                         modifier = Modifier
-                                            .size(42.dp)
+                                            .size(44.dp)
                                             .clip(CircleShape)
-                                            .background(swatchColor)
+                                            .background(presetColor)
                                             .then(
                                                 if (isSelected) {
                                                     Modifier.border(
                                                         width = 2.5.dp,
-                                                        color = MiuixTheme.colorScheme.onSurface,
+                                                        color = MiuixTheme.colorScheme.primary,
                                                         shape = CircleShape,
                                                     )
                                                 } else {
-                                                    Modifier.border(
-                                                        width = 1.dp,
-                                                        color = MiuixTheme.colorScheme.outline.copy(alpha = 0.25f),
-                                                        shape = CircleShape,
-                                                    )
+                                                    Modifier
                                                 }
                                             ),
                                         contentAlignment = Alignment.Center,
@@ -335,25 +277,26 @@ internal fun ThemeColorPickerSheet(
 
                 if (showAdvancedPicker) {
                     ColorPicker(
-                        color = pickerColor.value,
+                        color = pickerColor,
                         onColorChanged = { color ->
-                            pickerColor.value = color
+                            pickerColor = color
                             val hex = formatThemeSeedHex(colorToArgbLong(color))
-                            hexField.value = TextFieldValue(hex, TextRange(hex.length))
+                            hexField = TextFieldValue(hex, TextRange(hex.length))
                         },
                         modifier = Modifier.fillMaxWidth(),
                     )
                     OemTextField(
-                        value = hexField.value,
+                        value = hexField,
                         onValueChange = { updated ->
                             val upper = updated.copy(text = updated.text.uppercase())
-                            hexField.value = upper
-                            parseThemeHexColorOrNull(upper.text)?.let { pickerColor.value = it }
+                            hexField = upper
+                            parseThemeHexColorOrNull(upper.text)?.let { pickerColor = it }
                         },
                         label = YumeTxt.AppSettings.Interface.ColorThemeCodeLabel,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = UiDp.dp8),
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(top = UiDp.dp8),
                     )
                 }
             }

@@ -22,6 +22,7 @@ package com.github.yumeyucca.yumebox.data.store
 
 import com.github.yumeyucca.yumebox.data.model.AppColorTheme
 import com.github.yumeyucca.yumebox.data.model.AppLanguage
+import com.github.yumeyucca.yumebox.data.model.NotificationLineContent
 import com.github.yumeyucca.yumebox.data.model.ThemeMode
 import com.tencent.mmkv.MMKV
 
@@ -37,6 +38,12 @@ class AppSettingsStore(externalMmkv: MMKV) : MMKVPreference(externalMmkv = exter
     val excludeFromRecents by boolFlow(false)
     val showTrafficNotification by boolFlow(true)
     // Read by the foreground service through the same multi-process "settings" store.
+    val liveUpdatesEnabled by boolFlow(true)
+    val notificationFirstLine by enumFlow(NotificationLineContent.ProfileName)
+    val notificationSecondLine by enumFlow(NotificationLineContent.LiveTraffic)
+    val notificationFirstLineText by strFlow("")
+    val notificationSecondLineText by strFlow("")
+    // Read by the foreground service through the same multi-process "settings" store.
     val superIslandEnabled by boolFlow(true)
     val bottomBarAutoHide by boolFlow(true)
     val topBarBlurEnabled by boolFlow(false)
@@ -48,20 +55,23 @@ class AppSettingsStore(externalMmkv: MMKV) : MMKVPreference(externalMmkv = exter
     val moeWallpaperZoom by floatFlow(1.0f)
     val moeWallpaperBiasX by floatFlow(0.0f)
     val moeWallpaperBiasY by floatFlow(0.0f)
-    val moeHomeQuote by strFlow("さよなら君の声 忘れたりしない ずっと")
+    val moeHomeQuote by strFlow("その指で染めてください")
+    val moeHomeQuoteAuthor by strFlow("秽翼的尤斯蒂娅")
     val moeSidebarExpanded by boolFlow(true)
+    val moeStatusBarSpacing by boolFlow(false)
     val splitLeftRatio by floatFlow(0.42f)
     val pageScale by floatFlow(1.0f)
     val predictiveBackEnabled by boolFlow(false)
     val predictiveBackMaxProgress by floatFlow(50.0f)
     val customUserAgent by strFlow("")
+    val autoCheckUpdate by boolFlow(true)
+    // Empty follows the installed build's channel; "stable" is Release, "nightly" is Nightly.
+    val updateChannel by strFlow("")
 
     init {
         migrateLegacyHomeKeys()
         resetHomePreviewGuideForWallpaperUpdate()
-        if (!mmkv.containsKey("useSystemWallpaper") &&
-            mmkv.decodeString("moeWallpaperUri").orEmpty().isNotBlank()
-        ) {
+        if (!mmkv.containsKey("useSystemWallpaper") && moeWallpaperUri.value.isNotBlank()) {
             mmkv.encode("useSystemWallpaper", false)
         }
     }
@@ -98,6 +108,7 @@ class AppSettingsStore(externalMmkv: MMKV) : MMKVPreference(externalMmkv = exter
         moveString("acgWallpaperUri", "moeWallpaperUri")
         moveString("acgWallpaperSourceUri", "moeWallpaperSourceUri")
         moveString("acgHomeQuote", "moeHomeQuote")
+        moveString("acgHomeQuoteAuthor", "moeHomeQuoteAuthor")
         moveFloat("acgWallpaperZoom", "moeWallpaperZoom")
         moveFloat("acgWallpaperBiasX", "moeWallpaperBiasX")
         moveFloat("acgWallpaperBiasY", "moeWallpaperBiasY")

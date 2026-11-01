@@ -11,8 +11,9 @@ settings:
     versionName: "build-input"
     abiFilters: [arm64-v8a]
     resourcePackaging:
+      merges:
+        - META-INF/services/**
       excludes:
-        - META-INF/**
         - okhttp3/**
         - schema/**
         - assets/dexopt/**
@@ -42,12 +43,9 @@ dependencies:
   - $libs.androidx.compose.animation
   - $libs.androidx.compose.ui.tooling.preview
   - $libs.androidx.activity.compose
-  - $libs.miuix.ui
-  - $libs.miuix.preference
   - $libs.miuix.icons
-  - $libs.haze
-  - $libs.haze.blur
-  - $libs.haze.blur.materials
+  - $libs.miuix.blur
+  - $libs.lucide.compose
   - $libs.decompose
   - $libs.decompose.extensions.compose
   - $libs.mmkv
@@ -80,5 +78,4 @@ dependencies:
   - $libs.androidx.biometric
   - $libs.androidx.core.ktx
   - $libs.androidx.core.splashscreen
-  # Preserve the previous application dependency security floor.
   - org.apache.commons:commons-lang3:3.20.0

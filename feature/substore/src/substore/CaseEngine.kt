@@ -33,7 +33,7 @@ class CaseEngine(
     backendPort: Int,
     frontendPort: Int,
     allowLan: Boolean,
-    private val onTerminated: () -> Unit = {},
+    private val onTerminated: (CaseEngine) -> Unit = {},
 ) : Closeable {
     val host = if (allowLan) "0.0.0.0" else "127.0.0.1"
 
@@ -73,6 +73,7 @@ class CaseEngine(
                     "--SUB_STORE_FRONTEND_PATH=${SubStorePaths.frontendDir.absolutePath}",
                     "--SUB_STORE_BACKEND_API_HOST=$host",
                     "--SUB_STORE_BACKEND_API_PORT=$backendPort",
+                    "--SUB_STORE_BACKEND_CUSTOM_NAME=YumeBox",
                     "--SUB_STORE_DATA_BASE_PATH=${SubStorePaths.dataDir.absolutePath}",
                     "--SUB_STORE_WORKING_DIR=${SubStorePaths.workingDir.absolutePath}",
                 )
@@ -125,7 +126,7 @@ class CaseEngine(
                     Timber.e(error, "CaseEngine run failed")
                 } finally {
                     cleanup()
-                    runCatching(onTerminated)
+                    runCatching { onTerminated(this@CaseEngine) }
                         .onFailure { Timber.e(it, "CaseEngine termination callback failed") }
                 }
             }

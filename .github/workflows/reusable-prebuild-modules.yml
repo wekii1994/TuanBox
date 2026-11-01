@@ -14,11 +14,12 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 jobs:
   prebuild:
     name: Prebuild Resources & Java (${{ inputs.build_type }})
-    runs-on: macos-26
+    runs-on: ubuntu-26.04
     steps:
       - name: Checkout
         uses: actions/checkout@v7.0.1
@@ -36,7 +37,7 @@ jobs:
         uses: actions/cache@v6.1.0
         with:
           path: |
-            ~/Library/Caches/JetBrains/Kotlin
+            ~/.cache/JetBrains/Kotlin
             .kotlin/yumebox/maven
             .kotlin/yumebox/gradle-*
           key: ${{ runner.os }}-toolchain-${{ hashFiles('kotlin', '*module-template.yaml', '**/module.yaml', 'gradle/libs.versions.toml') }}
@@ -49,8 +50,11 @@ jobs:
           packages: "platform-tools platforms;android-37.0 build-tools;37.0.0"
 
       - name: Configure local.properties
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "sdk.dir=${ANDROID_SDK_ROOT}" > local.properties
+          printf 'gpr.user=%s\ngpr.key=%s\n' "${GITHUB_ACTOR}" "${GITHUB_TOKEN}" >> local.properties
 
       - name: Compile sources & generate resources
         shell: bash
@@ -58,7 +62,8 @@ jobs:
           set -eu
           build_type="${{ inputs.build_type }}"
           sh kotlin run --module=packaging -- --build-type="${build_type}" --compile-only \
-            -Pupdate.channel="${{ inputs.channel }}"
+            -Pupdate.channel="${{ inputs.channel }}" \
+            -Pupdate.baseUrl="${{ vars.R2_PUBLIC_BASE_URL }}"
 
       - name: Upload Toolchain artifacts
         uses: actions/upload-artifact@v7.0.2

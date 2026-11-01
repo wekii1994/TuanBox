@@ -10,6 +10,13 @@ internal val ZhHansYumeStrings_Editor: YumeStrings_Editor = YumeStrings_Editor(
     Action = YumeStrings_Editor_Action(
         Format = "格式化",
         Save = "保存",
+        Undo = "撤销",
+        Redo = "重做",
+        FontSize = "字体大小",
+        Cut = "剪切",
+        Copy = "复制",
+        Paste = "粘贴",
+        SelectAll = "全选",
     ),
     Message = YumeStrings_Editor_Message(
         FormatSuccess = "格式化成功",
@@ -18,7 +25,7 @@ internal val ZhHansYumeStrings_Editor: YumeStrings_Editor = YumeStrings_Editor(
     ),
     Discard = YumeStrings_Editor_Discard(
         Title = "未保存的修改",
-        Summary = "当前有未保存的修改，确定要放弃吗？",
+        Summary = "当前有未保存的修改，确定要放弃吗",
         Confirm = "放弃",
     ),
     JsonSubtitle = "使用 JSON 格式编辑",
@@ -34,6 +41,13 @@ internal val ZhYumeStrings_Editor: YumeStrings_Editor = YumeStrings_Editor(
     Action = YumeStrings_Editor_Action(
         Format = "格式化",
         Save = "儲存",
+        Undo = "復原",
+        Redo = "重做",
+        FontSize = "字型大小",
+        Cut = "剪下",
+        Copy = "複製",
+        Paste = "貼上",
+        SelectAll = "全選",
     ),
     Message = YumeStrings_Editor_Message(
         FormatSuccess = "格式化成功",
@@ -42,7 +56,7 @@ internal val ZhYumeStrings_Editor: YumeStrings_Editor = YumeStrings_Editor(
     ),
     Discard = YumeStrings_Editor_Discard(
         Title = "未儲存的修改",
-        Summary = "目前有未儲存的修改，確定要放棄嗎？",
+        Summary = "目前有未儲存的修改，確定要放棄嗎",
         Confirm = "放棄",
     ),
     JsonSubtitle = "使用 JSON 格式編輯",
@@ -58,6 +72,13 @@ internal val EnYumeStrings_Editor: YumeStrings_Editor = YumeStrings_Editor(
     Action = YumeStrings_Editor_Action(
         Format = "Format",
         Save = "Save",
+        Undo = "Undo",
+        Redo = "Redo",
+        FontSize = "Font size",
+        Cut = "Cut",
+        Copy = "Copy",
+        Paste = "Paste",
+        SelectAll = "Select all",
     ),
     Message = YumeStrings_Editor_Message(
         FormatSuccess = "Formatted",
@@ -66,7 +87,7 @@ internal val EnYumeStrings_Editor: YumeStrings_Editor = YumeStrings_Editor(
     ),
     Discard = YumeStrings_Editor_Discard(
         Title = "Unsaved changes",
-        Summary = "There are unsaved changes. Discard them?",
+        Summary = "There are unsaved changes. Discard them",
         Confirm = "Discard",
     ),
     JsonSubtitle = "Edit as JSON",
@@ -82,6 +103,13 @@ internal val JaYumeStrings_Editor: YumeStrings_Editor = YumeStrings_Editor(
     Action = YumeStrings_Editor_Action(
         Format = "整形",
         Save = "保存",
+        Undo = "元に戻す",
+        Redo = "やり直す",
+        FontSize = "文字サイズ",
+        Cut = "切り取り",
+        Copy = "コピー",
+        Paste = "貼り付け",
+        SelectAll = "すべて選択",
     ),
     Message = YumeStrings_Editor_Message(
         FormatSuccess = "整形しました",
@@ -90,7 +118,7 @@ internal val JaYumeStrings_Editor: YumeStrings_Editor = YumeStrings_Editor(
     ),
     Discard = YumeStrings_Editor_Discard(
         Title = "未保存の変更",
-        Summary = "未保存の変更があります.破棄しますか？",
+        Summary = "未保存の変更があります.破棄しますか",
         Confirm = "破棄",
     ),
     JsonSubtitle = "JSON 形式で編集",
@@ -106,6 +134,13 @@ internal val RuYumeStrings_Editor: YumeStrings_Editor = YumeStrings_Editor(
     Action = YumeStrings_Editor_Action(
         Format = "Форматировать",
         Save = "Сохранить",
+        Undo = "Отменить",
+        Redo = "Повторить",
+        FontSize = "Размер шрифта",
+        Cut = "Вырезать",
+        Copy = "Копировать",
+        Paste = "Вставить",
+        SelectAll = "Выбрать все",
     ),
     Message = YumeStrings_Editor_Message(
         FormatSuccess = "Форматирование выполнено",
@@ -114,7 +149,7 @@ internal val RuYumeStrings_Editor: YumeStrings_Editor = YumeStrings_Editor(
     ),
     Discard = YumeStrings_Editor_Discard(
         Title = "Несохранённые изменения",
-        Summary = "Есть несохранённые изменения. Отменить их?",
+        Summary = "Есть несохранённые изменения. Отменить их",
         Confirm = "Отменить",
     ),
     JsonSubtitle = "Редактировать в формате JSON",

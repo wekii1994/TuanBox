@@ -22,327 +22,148 @@
 
 package com.github.yumeyucca.yumebox.screen.profiles
 
-
 import androidx.compose.animation.*
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.key
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntSize
-import com.github.yumeyucca.yumebox.presentation.component.AgeSecretKeyField
-import com.github.yumeyucca.yumebox.presentation.component.AppCard
-import com.github.yumeyucca.yumebox.presentation.component.OemTextField
-import com.github.yumeyucca.yumebox.presentation.icon.Yume
-import com.github.yumeyucca.yumebox.presentation.icon.yume.PackageCheck
+import com.github.yumeyucca.yumebox.presentation.component.AppActionBottomSheet
+import com.github.yumeyucca.yumebox.presentation.component.AppBottomSheetCloseAction
+import com.github.yumeyucca.yumebox.presentation.component.AppBottomSheetConfirmAction
 import com.github.yumeyucca.yumebox.presentation.theme.UiDp
 import com.github.yumeyucca.yumebox.presentation.util.ProfileImportType
 import com.github.yumeyucca.yumebox.core.locale.YumeTxt
-import top.yukonga.miuix.kmp.basic.*
-import top.yukonga.miuix.kmp.preference.WindowSpinnerPreference
-import top.yukonga.miuix.kmp.theme.MiuixTheme
+
+internal class ProfileAddSheetActions(
+    val dismiss: () -> Unit,
+    val submit: () -> Unit,
+    val selectType: (ProfileImportType) -> Unit,
+    val changeName: (TextFieldValue) -> Unit,
+    val changeUrl: (TextFieldValue) -> Unit,
+    val changeAgeSecretKey: (TextFieldValue) -> Unit,
+    val updateHeight: (Int) -> Unit,
+    val pickFile: () -> Unit,
+    val selectQrImage: () -> Unit,
+    val qrScanned: (String) -> Unit,
+)
 
 @Composable
-internal fun DownloadProgressContent(
+internal fun ProfileAddSheetContent(
+    actions: ProfileAddSheetActions,
+    show: Boolean,
+    phase: ProfileSheetPhase,
+    selectedImportType: ProfileImportType,
+    form: ProfileAddFormState,
+    hasCameraPermission: Boolean,
+    showCameraPreview: Boolean,
     downloadProgress: DownloadProgress?,
-    stableSheetHeightPx: Int,
-    stableSheetHeight: Dp,
-    downloadSheetContentHeight: Dp,
-    downloadCompleteSheetContentHeight: Dp,
+    stableHeightPx: Int,
+    downloadHeight: Dp,
+    downloadCompleteHeight: Dp,
 ) {
-    val isCompleted = downloadProgress?.isCompleted == true
-    Column(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .height(
-                    if (isCompleted) {
-                        downloadCompleteSheetContentHeight
-                    } else if (stableSheetHeightPx > 0) {
-                        stableSheetHeight
-                    } else {
-                        downloadSheetContentHeight
-                    }
-                ),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(UiDp.dp16, Alignment.CenterVertically),
-    ) {
-        AnimatedContent(
-            targetState = isCompleted,
-            modifier = Modifier.size(UiDp.dp48),
-            contentAlignment = Alignment.Center,
-            transitionSpec = {
-                fadeIn(animationSpec = tween(300)) togetherWith fadeOut(animationSpec = tween(300))
-            },
-            label = "ProgressIcon",
-        ) { complete ->
-            if (complete) {
-                Icon(
-                    imageVector = Yume.PackageCheck,
-                    contentDescription = YumeTxt.ProfilesPage.Sheet.Complete,
-                    tint = MiuixTheme.colorScheme.onPrimary,
-                    modifier =
-                        Modifier
-                            .fillMaxSize()
-                            .clip(RoundedCornerShape(UiDp.dp16))
-                            .background(MiuixTheme.colorScheme.primary)
-                            .padding(UiDp.dp10),
-                )
-            } else {
-                InfiniteProgressIndicator(modifier = Modifier.size(UiDp.dp32))
+    val density = LocalDensity.current
+    val stableHeight: Dp? =
+        remember(stableHeightPx, density) {
+            if (stableHeightPx <= 0) null else with(density) { stableHeightPx.toDp() }
+        }
+
+    // Read inside the title-bar action lambdas via state (not captured parameters): the
+    // overlay-hosted action row can be re-rendered from a stale composable after the app returns
+    // from background, and only a state read there keeps it subscribed to updates.
+    val currentPhase by rememberUpdatedState(phase)
+    val importType by rememberUpdatedState(selectedImportType)
+
+    AppActionBottomSheet(
+        show = show,
+        title = YumeTxt.ProfilesPage.Sheet.AddTitle,
+        startAction = {
+            if (currentPhase == ProfileSheetPhase.Editing) {
+                AppBottomSheetCloseAction(onClick = actions.dismiss)
             }
-        }
-
-        downloadProgress?.message?.let { message ->
-            Text(
-                text = message,
-                style = MiuixTheme.textStyles.body1,
-                color = MiuixTheme.colorScheme.onSurface,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth(),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        downloadProgress?.itemProgress?.let { itemProgress ->
-            Text(
-                text = itemProgress,
-                style = MiuixTheme.textStyles.footnote1,
-                color = MiuixTheme.colorScheme.onSurface,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
-    }
-}
-
-@Composable
-internal fun ProfileFormContent(
-    selectedImportType: ProfileImportType,
-    profileLocked: Boolean,
-    nameTextFieldValue: TextFieldValue,
-    urlTextFieldValue: TextFieldValue,
-    fileNameTextFieldValue: TextFieldValue,
-    ageSecretKeyTextFieldValue: TextFieldValue,
-    error: String,
-    hasCameraPermission: Boolean,
-    showCameraPreview: Boolean,
-    onContainerMeasured: (IntSize) -> Unit,
-    onTypeSelected: (ProfileImportType) -> Unit,
-    onNameChange: (TextFieldValue) -> Unit,
-    onUrlChange: (TextFieldValue) -> Unit,
-    onAgeSecretKeyChange: (TextFieldValue) -> Unit,
-    onPickFile: () -> Unit,
-    onSelectQrImage: () -> Unit,
-    onQrScanned: (String) -> Unit,
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .onSizeChanged(onContainerMeasured),
-        verticalArrangement = Arrangement.spacedBy(UiDp.dp16),
-    ) {
-        ProfileTypeSelectorCard(
-            selectedImportType = selectedImportType,
-            profileLocked = profileLocked,
-            onTypeSelected = onTypeSelected,
-        )
-
-        Crossfade(
-            targetState = selectedImportType,
-            animationSpec = tween(200),
-            label = "ProfileTypeContent",
-        ) { importType ->
-            when (importType) {
-                ProfileImportType.Qr ->
-                    QrScannerContent(
-                        hasCameraPermission = hasCameraPermission,
-                        showCameraPreview = showCameraPreview,
-                        onSelectQrImage = onSelectQrImage,
-                        onQrScanned = onQrScanned,
-                    )
-
-                ProfileImportType.Url,
-                ProfileImportType.LocalFile ->
-                    ManualProfileContent(
-                        importType = importType,
-                        profileLocked = profileLocked,
-                        nameTextFieldValue = nameTextFieldValue,
-                        urlTextFieldValue = urlTextFieldValue,
-                        fileNameTextFieldValue = fileNameTextFieldValue,
-                        ageSecretKeyTextFieldValue = ageSecretKeyTextFieldValue,
-                        error = error,
-                        onNameChange = onNameChange,
-                        onUrlChange = onUrlChange,
-                        onAgeSecretKeyChange = onAgeSecretKeyChange,
-                        onPickFile = onPickFile,
-                    )
+        },
+        endAction = {
+            // Visibility only: submitProfile owns the in-flight guard.
+            if (currentPhase == ProfileSheetPhase.Editing && importType != ProfileImportType.Qr) {
+                AppBottomSheetConfirmAction(onClick = actions.submit)
             }
-        }
-    }
-}
-
-@Composable
-private fun ProfileTypeSelectorCard(
-    selectedImportType: ProfileImportType,
-    profileLocked: Boolean,
-    onTypeSelected: (ProfileImportType) -> Unit,
-) {
-    AppCard(applyHorizontalPadding = false) {
-        Box(
-            modifier =
-                Modifier
-                    .alpha(if (profileLocked) 0.5f else 1f)
-                    .clickable(
-                        enabled = profileLocked,
-                        indication = null,
-                        interactionSource = remember { MutableInteractionSource() },
-                        onClick = {},
-                    )
-        ) {
-            WindowSpinnerPreference(
-                title = YumeTxt.ProfilesPage.Type.Title,
-                items = ProfileImportType.entries.map { type -> DropdownItem(title = type.spinnerTitle()) },
-                selectedIndex = selectedImportType.ordinal,
-                onSelectedIndexChange = { index ->
-                    onTypeSelected(ProfileImportType.fromSpinnerIndex(index))
-                },
-            )
-        }
-    }
-}
-
-@Composable
-private fun QrScannerContent(
-    hasCameraPermission: Boolean,
-    showCameraPreview: Boolean,
-    onSelectQrImage: () -> Unit,
-    onQrScanned: (String) -> Unit,
-) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(UiDp.dp16),
+        },
+        onDismissRequest = actions.dismiss,
     ) {
         Column(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .height(UiDp.dp200)
-                    .clip(RoundedCornerShape(UiDp.dp12))
-                    .background(MiuixTheme.colorScheme.surfaceVariant),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
+                    .wrapContentHeight()
+                    .animateContentSize(animationSpec = tween(300, easing = FastOutSlowInEasing))
+                    .padding(bottom = UiDp.dp16)
         ) {
-            if (showCameraPreview) {
-                key("qr_scanner_stable") { StableQrScanner(onScanned = onQrScanned) }
-            } else if (!hasCameraPermission) {
-                Text(YumeTxt.ProfilesPage.QrScanner.NeedPermission)
-            } else {
-                CircularProgressIndicator(modifier = Modifier.size(UiDp.dp32))
+            AnimatedContent(
+                targetState = phase.showsProgress,
+                transitionSpec = {
+                    if (targetState) {
+                        (
+                            slideInHorizontally(
+                                animationSpec = tween(260),
+                                initialOffsetX = { it },
+                            ) + fadeIn()
+                        ) togetherWith
+                            (
+                                slideOutHorizontally(
+                                    animationSpec = tween(220),
+                                    targetOffsetX = { -it / 3 },
+                                ) + fadeOut()
+                            )
+                    } else {
+                        (
+                            slideInHorizontally(
+                                animationSpec = tween(220),
+                                initialOffsetX = { -it / 3 },
+                            ) + fadeIn()
+                        ) togetherWith
+                            (
+                                slideOutHorizontally(
+                                    animationSpec = tween(260),
+                                    targetOffsetX = { it },
+                                ) + fadeOut()
+                            )
+                    }
+                },
+                label = "ProfileImportContentSwitch",
+            ) { showsProgress ->
+                if (showsProgress) {
+                    DownloadProgressContent(
+                        downloadProgress = downloadProgress,
+                        stableSheetHeight = stableHeight,
+                        downloadSheetContentHeight = downloadHeight,
+                        downloadCompleteSheetContentHeight = downloadCompleteHeight,
+                    )
+                } else {
+                    ProfileFormContent(
+                        selectedImportType = selectedImportType,
+                        form = form,
+                        hasCameraPermission = hasCameraPermission,
+                        showCameraPreview = showCameraPreview,
+                        onContainerMeasured = { actions.updateHeight(it.height) },
+                        onTypeSelected = actions.selectType,
+                        onNameChange = actions.changeName,
+                        onUrlChange = actions.changeUrl,
+                        onAgeSecretKeyChange = actions.changeAgeSecretKey,
+                        onPickFile = actions.pickFile,
+                        onSelectQrImage = actions.selectQrImage,
+                        onQrScanned = actions.qrScanned,
+                    )
+                }
             }
-        }
-
-        TextButton(
-            text = YumeTxt.ProfilesPage.QrScanner.SelectFromAlbum,
-            onClick = onSelectQrImage,
-            modifier = Modifier.fillMaxWidth(),
-        )
-    }
-}
-
-@Composable
-private fun ManualProfileContent(
-    importType: ProfileImportType,
-    profileLocked: Boolean,
-    nameTextFieldValue: TextFieldValue,
-    urlTextFieldValue: TextFieldValue,
-    fileNameTextFieldValue: TextFieldValue,
-    ageSecretKeyTextFieldValue: TextFieldValue,
-    error: String,
-    onNameChange: (TextFieldValue) -> Unit,
-    onUrlChange: (TextFieldValue) -> Unit,
-    onAgeSecretKeyChange: (TextFieldValue) -> Unit,
-    onPickFile: () -> Unit,
-) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(UiDp.dp16),
-    ) {
-        OemTextField(
-            value = nameTextFieldValue,
-            onValueChange = onNameChange,
-            label = YumeTxt.ProfilesPage.Input.ProfileName,
-            useLabelAsPlaceholder = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-
-        if (importType == ProfileImportType.Url) {
-            OemTextField(
-                value = urlTextFieldValue,
-                onValueChange = onUrlChange,
-                label = YumeTxt.ProfilesPage.Input.SubscriptionUrl,
-                useLabelAsPlaceholder = true,
-                maxLines = 2,
-                readOnly = profileLocked,
-                enabled = !profileLocked,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        } else {
-            Box(modifier = Modifier.fillMaxWidth()) {
-                OemTextField(
-                    value = fileNameTextFieldValue,
-                    onValueChange = {},
-                    label = YumeTxt.ProfilesPage.Input.SelectFile,
-                    useLabelAsPlaceholder = true,
-                    readOnly = true,
-                    enabled = false,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Box(
-                    modifier =
-                        Modifier
-                            .matchParentSize()
-                            .clickable(
-                                indication = null,
-                                interactionSource = remember { MutableInteractionSource() },
-                                onClick = onPickFile,
-                            ),
-                )
-            }
-        }
-
-        AgeSecretKeyField(
-            value = ageSecretKeyTextFieldValue,
-            onValueChange = onAgeSecretKeyChange,
-            label = YumeTxt.ProfilesPage.Input.AgeSecretKey,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        if (error.isNotEmpty()) {
-            Text(
-                text = error,
-                color = MiuixTheme.colorScheme.error,
-                style = MiuixTheme.textStyles.body2,
-            )
         }
     }
 }
-
-private fun ProfileImportType.spinnerTitle(): String =
-    when (this) {
-        ProfileImportType.Url -> YumeTxt.ProfilesPage.Type.Subscription
-        ProfileImportType.LocalFile -> YumeTxt.ProfilesPage.Type.LocalFile
-        ProfileImportType.Qr -> YumeTxt.ProfilesPage.Type.QrScan
-    }

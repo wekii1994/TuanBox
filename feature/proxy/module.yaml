@@ -20,11 +20,7 @@ dependencies:
   - $libs.koin.android
   - $libs.koin.androidx.compose
   - $libs.timber
-  - $libs.haze
-  - $libs.haze.blur
-  - $libs.haze.blur.materials
   - $libs.sketch.compose
   - $libs.sketch.http
-  - $libs.miuix.ui
-  - $libs.miuix.preference
   - $libs.miuix.icons
+  - $libs.lucide.compose

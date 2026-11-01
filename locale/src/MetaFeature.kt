@@ -1,18 +1,20 @@
 package com.github.yumeyucca.yumebox.core.locale
 
 internal val ZhHansYumeStrings_MetaFeature: YumeStrings_MetaFeature = YumeStrings_MetaFeature(
-    Title = "Meta 功能",
+    Title = "分流与规则",
     Section = YumeStrings_MetaFeature_Section(
         ConnectionAndTraffic = "连接、日志与规则",
-        Routing = "分流相关",
+        LogsAndConnections = "日志与连接",
+        LogsAndConnectionsSummary = "查看内核运行日志与当前连接，便于排查连接问题",
+        Routing = "分流",
     ),
     GeoX = YumeStrings_MetaFeature_GeoX(
-        OnlineUpdateTitle = "更新 GeoX",
-        OnlineUpdateSummary = "下载数据库文件",
+        OnlineUpdateTitle = "更新Geo文件",
+        OnlineUpdateSummary = "更新 GeoIP、GeoSite、Country、ASN 与 Model 文件，最近更新：%s",
     ),
     CustomRouting = YumeStrings_MetaFeature_CustomRouting(
         Title = "自定义分流",
-        Summary = "独立的分流规则配置",
+        Summary = "需在订阅中启用自定义分流，并在此处勾选配置；未启用的分流不会生效",
         EditYaml = "编辑 YAML",
         ManualYamlPresetDiscarded = "已丢弃未保存的预设开关，以保护手写 YAML 内容",
         GroupTypeTitle = "策略组类型",
@@ -46,6 +48,7 @@ internal val ZhHansYumeStrings_MetaFeature: YumeStrings_MetaFeature = YumeString
     ),
     AgeKey = YumeStrings_MetaFeature_AgeKey(
         Section = "Age 密钥",
+        Summary = "生成用于 Age 加密的 X25519 或 mlkem768-x25519 密钥对，公钥可用于配置，私钥请妥善保管",
         X25519Title = "X25519",
         HybridTitle = "mlkem768-x25519",
         SecretKey = "私钥",
@@ -56,18 +59,20 @@ internal val ZhHansYumeStrings_MetaFeature: YumeStrings_MetaFeature = YumeString
 )
 
 internal val ZhYumeStrings_MetaFeature: YumeStrings_MetaFeature = YumeStrings_MetaFeature(
-    Title = "Meta 功能",
+    Title = "分流與規則",
     Section = YumeStrings_MetaFeature_Section(
         ConnectionAndTraffic = "連線、日誌與規則",
-        Routing = "分流相關",
+        LogsAndConnections = "日誌與連線",
+        LogsAndConnectionsSummary = "檢視核心執行日誌與目前連線，便於排查連線問題",
+        Routing = "分流",
     ),
     GeoX = YumeStrings_MetaFeature_GeoX(
-        OnlineUpdateTitle = "更新 GeoX",
-        OnlineUpdateSummary = "下載資料庫檔案",
+        OnlineUpdateTitle = "更新Geo檔案",
+        OnlineUpdateSummary = "更新 GeoIP、GeoSite、Country、ASN 與 Model 檔案，最近更新：%s",
     ),
     CustomRouting = YumeStrings_MetaFeature_CustomRouting(
         Title = "自訂分流",
-        Summary = "獨立的分流規則設定",
+        Summary = "需在訂閱中啟用自訂分流，並在此處勾選設定；未啟用的分流不會生效",
         EditYaml = "編輯 YAML",
         ManualYamlPresetDiscarded = "已捨棄未儲存的預設切換，以保護手寫 YAML 內容",
         GroupTypeTitle = "策略組類型",
@@ -101,6 +106,7 @@ internal val ZhYumeStrings_MetaFeature: YumeStrings_MetaFeature = YumeStrings_Me
     ),
     AgeKey = YumeStrings_MetaFeature_AgeKey(
         Section = "Age 金鑰",
+        Summary = "產生用於 Age 加密的 X25519 或 mlkem768-x25519 金鑰對，公鑰可用於設定，私鑰請妥善保管",
         X25519Title = "X25519",
         HybridTitle = "mlkem768-x25519",
         SecretKey = "私鑰",
@@ -111,20 +117,22 @@ internal val ZhYumeStrings_MetaFeature: YumeStrings_MetaFeature = YumeStrings_Me
 )
 
 internal val EnYumeStrings_MetaFeature: YumeStrings_MetaFeature = YumeStrings_MetaFeature(
-    Title = "Meta Features",
+    Title = "Routing & Rules",
     Section = YumeStrings_MetaFeature_Section(
         ConnectionAndTraffic = "Connections, logs, and rules",
+        LogsAndConnections = "Logs & Connections",
+        LogsAndConnectionsSummary = "View kernel logs and current connections to troubleshoot connection issues",
         Routing = "Routing",
     ),
     GeoX = YumeStrings_MetaFeature_GeoX(
-        OnlineUpdateTitle = "Update GeoX",
-        OnlineUpdateSummary = "Download Database",
+        OnlineUpdateTitle = "Update Geo Files",
+        OnlineUpdateSummary = "Update GeoIP, GeoSite, Country, ASN, and Model files; last updated: %s",
     ),
     CustomRouting = YumeStrings_MetaFeature_CustomRouting(
         Title = "Custom Routing",
-        Summary = "Standalone routing rules configuration",
+        Summary = "Enable custom routing in the subscription and select a profile here; disabled profiles have no effect",
         EditYaml = "Edit YAML",
-        ManualYamlPresetDiscarded = "Unsaved preset switches were discarded to protect manually edited YAML.",
+        ManualYamlPresetDiscarded = "Unsaved preset switches were discarded to protect manually edited YAML",
         GroupTypeTitle = "Group Types",
         GroupTypeUrlTest = "UrlTest",
         GroupTypeFallback = "Fallback",
@@ -156,6 +164,7 @@ internal val EnYumeStrings_MetaFeature: YumeStrings_MetaFeature = YumeStrings_Me
     ),
     AgeKey = YumeStrings_MetaFeature_AgeKey(
         Section = "Age Keys",
+        Summary = "Generate an X25519 or mlkem768-x25519 key pair for Age encryption; use the public key in your configuration and keep the secret key safe",
         X25519Title = "X25519",
         HybridTitle = "mlkem768-x25519",
         SecretKey = "Secret Key",
@@ -166,20 +175,22 @@ internal val EnYumeStrings_MetaFeature: YumeStrings_MetaFeature = YumeStrings_Me
 )
 
 internal val JaYumeStrings_MetaFeature: YumeStrings_MetaFeature = YumeStrings_MetaFeature(
-    Title = "Meta 機能",
+    Title = "ルーティングとルール",
     Section = YumeStrings_MetaFeature_Section(
         ConnectionAndTraffic = "接続、ログ、ルール",
+        LogsAndConnections = "ログと接続",
+        LogsAndConnectionsSummary = "カーネルログと現在の接続を確認し、接続の問題を調査できます",
         Routing = "ルーティング",
     ),
     GeoX = YumeStrings_MetaFeature_GeoX(
-        OnlineUpdateTitle = "GeoX を更新",
-        OnlineUpdateSummary = "データベースをダウンロード",
+        OnlineUpdateTitle = "Geo ファイルを更新",
+        OnlineUpdateSummary = "GeoIP、GeoSite、Country、ASN、Model ファイルを更新します；最終更新：%s",
     ),
     CustomRouting = YumeStrings_MetaFeature_CustomRouting(
         Title = "カスタムルーティング",
-        Summary = "独立したルーティングルール設定",
+        Summary = "サブスクリプションでカスタムルーティングを有効にし、ここで設定を選択してください；無効な分流は反映されません",
         EditYaml = "YAML を編集",
-        ManualYamlPresetDiscarded = "手動編集した YAML を保護するため、未保存のプリセット変更を破棄しました.",
+        ManualYamlPresetDiscarded = "手動編集した YAML を保護するため、未保存のプリセット変更を破棄しました",
         GroupTypeTitle = "グループ種別",
         GroupTypeUrlTest = "UrlTest",
         GroupTypeFallback = "Fallback",
@@ -211,6 +222,7 @@ internal val JaYumeStrings_MetaFeature: YumeStrings_MetaFeature = YumeStrings_Me
     ),
     AgeKey = YumeStrings_MetaFeature_AgeKey(
         Section = "Age キー",
+        Summary = "Age 暗号化用の X25519 または mlkem768-x25519 キーペアを生成します；公開鍵は設定に使用でき、秘密鍵は安全に保管してください",
         X25519Title = "X25519",
         HybridTitle = "mlkem768-x25519",
         SecretKey = "秘密鍵",
@@ -221,20 +233,22 @@ internal val JaYumeStrings_MetaFeature: YumeStrings_MetaFeature = YumeStrings_Me
 )
 
 internal val RuYumeStrings_MetaFeature: YumeStrings_MetaFeature = YumeStrings_MetaFeature(
-    Title = "Функции Meta",
+    Title = "Маршрутизация и правила",
     Section = YumeStrings_MetaFeature_Section(
         ConnectionAndTraffic = "Соединения, журналы и правила",
+        LogsAndConnections = "Журналы и соединения",
+        LogsAndConnectionsSummary = "Просмотр журналов ядра и текущих соединений для диагностики подключений",
         Routing = "Маршрутизация",
     ),
     GeoX = YumeStrings_MetaFeature_GeoX(
-        OnlineUpdateTitle = "Обновить GeoX",
-        OnlineUpdateSummary = "Скачать базу данных",
+        OnlineUpdateTitle = "Обновить Geo-файлы",
+        OnlineUpdateSummary = "Обновляет файлы GeoIP, GeoSite, Country, ASN и Model; последнее обновление: %s",
     ),
     CustomRouting = YumeStrings_MetaFeature_CustomRouting(
         Title = "Своя маршрутизация",
-        Summary = "Отдельная конфигурация правил маршрутизации",
+        Summary = "Включите свою маршрутизацию в подписке и выберите профиль здесь; отключённые профили не применяются",
         EditYaml = "Редактировать YAML",
-        ManualYamlPresetDiscarded = "Несохранённые изменения пресета отменены для защиты YAML, отредактированного вручную.",
+        ManualYamlPresetDiscarded = "Несохранённые изменения пресета отменены для защиты YAML, отредактированного вручную",
         GroupTypeTitle = "Типы групп",
         GroupTypeUrlTest = "UrlTest",
         GroupTypeFallback = "Fallback",
@@ -266,6 +280,7 @@ internal val RuYumeStrings_MetaFeature: YumeStrings_MetaFeature = YumeStrings_Me
     ),
     AgeKey = YumeStrings_MetaFeature_AgeKey(
         Section = "Ключи Age",
+        Summary = "Создайте пару ключей X25519 или mlkem768-x25519 для шифрования Age; открытый ключ можно использовать в конфигурации, а секретный ключ следует хранить в безопасности",
         X25519Title = "X25519",
         HybridTitle = "mlkem768-x25519",
         SecretKey = "Секретный ключ",

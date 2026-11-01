@@ -14,7 +14,6 @@ dependencies:
   - //data
   - //runtime/contracts
   - //runtime/client
-  - //feature/editor
   - $libs.androidx.activity.compose
   - $libs.androidx.lifecycle.viewmodel.ktx
   - $libs.kotlinx.coroutines.android
@@ -23,7 +22,6 @@ dependencies:
   - $libs.koin.android
   - $libs.koin.androidx.compose
   - $libs.timber
-  - $libs.miuix.ui
-  - $libs.miuix.preference
   - $libs.miuix.icons
+  - $libs.lucide.compose
   - $libs.reorderable

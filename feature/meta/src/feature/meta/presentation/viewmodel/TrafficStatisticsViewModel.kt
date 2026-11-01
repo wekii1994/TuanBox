@@ -76,7 +76,8 @@ data class TargetSiteRecord(
 @Immutable
 data class TrafficStatisticsUiState(
     val selectedTimeRange: StatisticsTimeRange = StatisticsTimeRange.TODAY,
-    val summary: DailyTrafficSummary = DailyTrafficSummary.empty,
+    val summary: TrafficTotals = TrafficTotals.empty,
+    val topApps: List<AppTrafficUsage> = emptyList(),
     val chartBars: List<BarChartItem> = emptyList(),
     val chartAverage: Long = 0L,
     val todayTotal: Long = 0L,
@@ -88,6 +89,23 @@ data class TrafficStatisticsUiState(
     val recentRequests: List<RecentRequestRecord> = emptyList(),
     val targetSites: List<TargetSiteRecord> = emptyList(),
 )
+
+/**
+ * Transfer totals of the selected [StatisticsTimeRange]. The range is the period, so this type
+ * carries no timestamp at all: a millis-named field must never hold a day count.
+ */
+@Immutable
+data class TrafficTotals(
+    val totalUpload: Long = 0L,
+    val totalDownload: Long = 0L,
+) {
+    val total: Long
+        get() = totalUpload + totalDownload
+
+    companion object {
+        val empty = TrafficTotals()
+    }
+}
 
 private data class ConnectionDetails(
     val recentRequests: List<RecentRequestRecord> = emptyList(),
@@ -302,7 +320,6 @@ class TrafficStatisticsViewModel(
             StatisticsTimeRange.TODAY -> buildTodayBars(hourlyTotals)
             StatisticsTimeRange.WEEK -> buildWeekBars(dailyTotals)
         }
-
         val average =
             if (range == StatisticsTimeRange.WEEK && bars.isNotEmpty()) {
                 bars.sumOf(BarChartItem::value) / bars.size
@@ -329,8 +346,7 @@ class TrafficStatisticsViewModel(
 
         return TrafficStatisticsUiState(
             selectedTimeRange = range,
-            summary = DailyTrafficSummary(
-                dateMillis = range.days.toLong(),
+            summary = TrafficTotals(
                 totalUpload = totalUpload,
                 totalDownload = totalDownload,
             ),

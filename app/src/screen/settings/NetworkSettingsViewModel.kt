@@ -21,7 +21,6 @@
 package com.github.yumeyucca.yumebox.screen.settings
 
 import android.app.Application
-import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.yumeyucca.yumebox.common.util.stateInWhileSubscribed
@@ -34,10 +33,12 @@ import com.github.yumeyucca.yumebox.data.store.NetworkSettingsStore
 import com.github.yumeyucca.yumebox.data.store.Preference
 import com.github.yumeyucca.yumebox.runtime.service.core.KernelManager
 import com.github.yumeyucca.yumebox.runtime.service.root.RootAccessSupport
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import timber.log.Timber
 
 /**
  * Backs both the run-mode picker ([NetworkSettingsScreen]) and the VpnService options page
@@ -49,38 +50,37 @@ class NetworkSettingsViewModel(
     settings: NetworkSettingsStore,
     private val controller: NetworkSettingsController,
 ) : AndroidViewModel(application) {
-    val runMode: Preference<RunMode> = settings.runMode
-    val bypassPrivateNetwork: Preference<Boolean> = settings.bypassPrivateNetwork
-    val ebpfBypassCn: Preference<Boolean> = settings.ebpfBypassCn
-    val dnsHijack: Preference<Boolean> = settings.dnsHijack
-    val allowBypass: Preference<Boolean> = settings.allowBypass
-    val enableIPv6: Preference<Boolean> = settings.enableIPv6
-    val systemProxy: Preference<Boolean> = settings.systemProxy
-    val disableAllOverride: Preference<Boolean> = settings.disableAllOverride
-    val accessControlMode: Preference<AccessControlMode> = settings.accessControlMode
+    // Screens read these through the state snapshots below, so only the two rows that render their
+    // own `Preference` stay public.
+    private val runMode: Preference<RunMode> = settings.runMode
+    private val bypassPrivateNetwork: Preference<Boolean> = settings.bypassPrivateNetwork
+    private val dnsHijack: Preference<Boolean> = settings.dnsHijack
+    private val allowBypass: Preference<Boolean> = settings.allowBypass
+    private val enableIPv6: Preference<Boolean> = settings.enableIPv6
+    private val systemProxy: Preference<Boolean> = settings.systemProxy
+    private val disableAllOverride: Preference<Boolean> = settings.disableAllOverride
+    private val accessControlMode: Preference<AccessControlMode> = settings.accessControlMode
 
     // Root Tun geometry — its own service-config sub-page ([TunServiceOptionsScreen]).
     val tunStack: Preference<TunStack> = settings.tunStack
-    val tunAutoRoute: Preference<Boolean> = settings.tunAutoRoute
-    val tunStrictRoute: Preference<Boolean> = settings.tunStrictRoute
-    val tunAutoRedirect: Preference<Boolean> = settings.tunAutoRedirect
-    val tunDnsMode: Preference<TunDnsMode> = settings.tunDnsMode
-    val tunIfName: Preference<String> = settings.tunIfName
-    val tunMtu: Preference<Int> = settings.tunMtu
-    // Root availability, probed once on open — gates the Tun card (greyed when false, no
-    // toast).
+    private val tunAutoRoute: Preference<Boolean> = settings.tunAutoRoute
+    private val tunStrictRoute: Preference<Boolean> = settings.tunStrictRoute
+    private val tunAutoRedirect: Preference<Boolean> = settings.tunAutoRedirect
+    private val tunDnsMode: Preference<TunDnsMode> = settings.tunDnsMode
+    private val tunIfName: Preference<String> = settings.tunIfName
+    private val tunMtu: Preference<Int> = settings.tunMtu
+    // Root availability, probed once on open — gates the Tun card (greyed when false, no toast).
     // Probing constructs the libsu shell, so a rooted device may surface its su prompt here; that
-    // grant
-    // flow is intended. A non-rooted device fast-fails to false and the root cards stay disabled.
+    // grant flow is intended. A non-rooted device fast-fails to false and the root cards stay
+    // disabled.
     private val _rootAvailable = MutableStateFlow(false)
     val rootAvailable: StateFlow<Boolean> = _rootAvailable.asStateFlow()
     private val _ebpfAvailable = MutableStateFlow(false)
     val ebpfAvailable: StateFlow<Boolean> = _ebpfAvailable.asStateFlow()
     private val _kernels = MutableStateFlow<List<KernelManager.Kernel>>(emptyList())
-    private val _kernelStatus = MutableStateFlow("No downloaded kernel installed")
     private val _kernelBusy = MutableStateFlow(false)
     private val _activeKernelId = MutableStateFlow(KernelManager.BUNDLED_ALPHA_ID)
-    private val _installedKernelCommits = MutableStateFlow<Map<String, String>>(emptyMap())
+    private val _installedKernels = MutableStateFlow<List<InstalledKernelUi>>(emptyList())
 
     data class NetworkSettingsScreenState(
         val runMode: RunMode = RunMode.VpnService,
@@ -89,10 +89,9 @@ class NetworkSettingsViewModel(
         val rootAvailable: Boolean = false,
         val ebpfAvailable: Boolean = false,
         val kernels: List<KernelManager.Kernel> = emptyList(),
-        val kernelStatus: String = "No downloaded kernel installed",
         val kernelBusy: Boolean = false,
         val activeKernelId: String = KernelManager.BUNDLED_ALPHA_ID,
-        val installedKernelCommits: Map<String, String> = emptyMap(),
+        val installedKernels: List<InstalledKernelUi> = emptyList(),
     )
 
     val networkScreenState: StateFlow<NetworkSettingsScreenState> =
@@ -114,20 +113,18 @@ class NetworkSettingsViewModel(
             },
             combine(
                 _kernels,
-                _kernelStatus,
                 _kernelBusy,
                 _activeKernelId,
-                _installedKernelCommits,
-            ) { availableKernels, status, busy, active, installedCommits ->
-                KernelUiSelection(availableKernels, status, busy, active, installedCommits)
+                _installedKernels,
+            ) { availableKernels, busy, active, installed ->
+                KernelUiSelection(availableKernels, busy, active, installed)
             },
         ) { base, kernel ->
             base.copy(
                 kernels = kernel.kernels,
-                kernelStatus = kernel.status,
                 kernelBusy = kernel.busy,
                 activeKernelId = kernel.active,
-                installedKernelCommits = kernel.installedCommits,
+                installedKernels = kernel.installed,
             )
         }
             .stateInWhileSubscribed(
@@ -139,7 +136,6 @@ class NetworkSettingsViewModel(
                     rootAvailable = false,
                     ebpfAvailable = false,
                     kernels = emptyList(),
-                    kernelStatus = _kernelStatus.value,
                     kernelBusy = false,
                     activeKernelId = KernelManager.BUNDLED_ALPHA_ID,
                 ),
@@ -200,19 +196,16 @@ class NetworkSettingsViewModel(
             )
 
     init {
-        _activeKernelId.value = KernelManager.activeKernelId(getApplication())
         viewModelScope.launch {
-            refreshInstalledKernelCommits()
+            // Everything below reads the kernel directory; none of it may run on the caller's
+            // frame (this constructor runs during composition of the settings page).
+            _activeKernelId.value =
+                withContext(Dispatchers.IO) { KernelManager.activeKernelId(getApplication()) }
+            refreshInstalledKernels()
             _rootAvailable.value = RootAccessSupport.isGranted()
             refreshEbpfAvailability()
         }
     }
-
-    val uiState: StateFlow<NetworkSettingsUiState> =
-        runMode.state
-            .map { NetworkSettingsUiState(configuredMode = it) }
-            .distinctUntilChanged()
-            .stateInWhileSubscribed(viewModelScope, NetworkSettingsUiState())
 
     val tunServiceOptionsUiState: StateFlow<TunServiceOptionsUiState> =
         combine(
@@ -247,16 +240,8 @@ class NetworkSettingsViewModel(
                 ),
             )
 
-    val ebpfServiceOptionsUiState: StateFlow<EbpfServiceOptionsUiState> =
-        ebpfBypassCn.state
-            .map(::EbpfServiceOptionsUiState)
-            .stateInWhileSubscribed(
-                viewModelScope,
-                EbpfServiceOptionsUiState(bypassCn = ebpfBypassCn.value),
-            )
-
     /**
-     * Selects the run mode — the single mode key across the runtime. The root Tun card
+     * Selects the run mode — the single mode key across the runtime. The root Tun cards
      * are disabled in the UI when [rootAvailable] is false, so reaching here for a root mode
      * already implies root was granted.
      */
@@ -267,10 +252,6 @@ class NetworkSettingsViewModel(
 
     fun onBypassPrivateNetworkChange(enabled: Boolean) {
         controller.setAndRestartIfNeeded(bypassPrivateNetwork, enabled)
-    }
-
-    fun onEbpfBypassCnChange(enabled: Boolean) {
-        controller.setAndRestartIfNeeded(ebpfBypassCn, enabled)
     }
 
     fun onDnsHijackChange(enabled: Boolean) {
@@ -319,18 +300,36 @@ class NetworkSettingsViewModel(
         controller.setAndRestartIfNeeded(accessControlMode, mode)
     }
 
+    /**
+     * [runCatching] for suspending work: the plain version also catches [CancellationException],
+     * which turns "this screen is gone" into a reported failure and lets the block run on.
+     */
+    private suspend fun <T> runCatchingCancellable(block: suspend () -> T): Result<T> =
+        try {
+            Result.success(block())
+        } catch (error: CancellationException) {
+            throw error
+        } catch (@Suppress("TooGenericExceptionCaught") error: Exception) {
+            Timber.w(error, "Kernel operation failed")
+            Result.failure(error)
+        }
+
     fun refreshKernels() {
         if (_kernelBusy.value) return
         viewModelScope.launch {
             _kernelBusy.value = true
-            runCatching { KernelManager.fetchIndex() }
-                .onSuccess { index ->
-                    _kernels.value = index.kernels
-                    _activeKernelId.value = KernelManager.activeKernelId(getApplication())
-                    _kernelStatus.value = "Select kernels to download"
-                }
-                .onFailure { error -> _kernelStatus.value = "Kernel index unavailable: ${error.message}" }
-            _kernelBusy.value = false
+            try {
+                runCatchingCancellable { KernelManager.fetchIndex() }
+                    .onSuccess { index ->
+                        _kernels.value = index.kernels
+                        _activeKernelId.value =
+                            withContext(Dispatchers.IO) {
+                                KernelManager.activeKernelId(getApplication())
+                            }
+                    }
+            } finally {
+                _kernelBusy.value = false
+            }
         }
     }
 
@@ -340,165 +339,139 @@ class NetworkSettingsViewModel(
         if (selected.isEmpty()) return
         viewModelScope.launch {
             _kernelBusy.value = true
-            var completed = 0
             var failed = false
-            selected.forEach { kernel ->
-                if (!failed) {
-                    _kernelStatus.value = "Downloading ${kernel.name}"
-                    runCatching { KernelManager.install(getApplication(), kernel) }
-                        .onFailure { error ->
-                            failed = true
-                            _kernelStatus.value = "Kernel install failed: ${error.message}"
-                        }
+            try {
+                selected.forEach { kernel ->
+                    if (!failed) {
+                        // Downloads and unpacks the core; must not occupy the main thread.
+                        val installed =
+                            runCatchingCancellable {
+                                withContext(Dispatchers.IO) {
+                                    KernelManager.install(getApplication(), kernel)
+                                }
+                            }
+                        failed = installed.isFailure
+                    }
                 }
-                if (!failed) completed++
+                if (!failed) refreshInstalledKernels()
+            } finally {
+                _kernelBusy.value = false
+                onFinished(!failed)
             }
-            if (!failed) _kernelStatus.value = "$completed kernel(s) downloaded and verified"
-            if (!failed) refreshInstalledKernelCommits()
-            _kernelBusy.value = false
-            onFinished(!failed)
         }
     }
 
+    /**
+     * Applies the user's kernel pick. Every branch probes or writes the kernel directory, so the
+     * work runs off the caller's frame and [busy][NetworkSettingsScreenState.kernelBusy] gates
+     * concurrent picks.
+     */
     fun selectKernel(id: String) {
-        if (id == KernelManager.BUNDLED_ALPHA_ID) {
-            runCatching { KernelManager.activate(getApplication(), id) }
-                .onSuccess {
-                    onKernelActivated(id)
-                    _kernelStatus.value = "Builtin selected. Restart the service to load it."
-                }
+        if (_kernelBusy.value) return
+        viewModelScope.launch {
+            _kernelBusy.value = true
+            try {
+                applyKernelSelection(id)
+            } finally {
+                _kernelBusy.value = false
+            }
+        }
+    }
+
+    private suspend fun applyKernelSelection(id: String) {
+        val context = getApplication<Application>()
+        val installed =
+            withContext(Dispatchers.IO) {
+                id == KernelManager.BUNDLED_ALPHA_ID || KernelManager.isInstalled(context, id)
+            }
+        if (installed) {
+            activateKernel(id)
             return
         }
         val kernel = _kernels.value.firstOrNull { it.id == id }
-        if (kernel == null && KernelManager.isInstalled(getApplication(), id)) {
-            runCatching { KernelManager.activate(getApplication(), id) }
-                .onSuccess {
-                    onKernelActivated(id)
-                    _kernelStatus.value = "$id selected. Restart the service to load it."
-                }
-            return
-        }
         if (kernel == null) {
-            viewModelScope.launch {
-                _kernelBusy.value = true
-                runCatching { KernelManager.fetchIndex() }
-                    .onSuccess { index ->
-                        _kernels.value = index.kernels
-                        _kernelBusy.value = false
-                        selectKernel(id)
-                    }
-                    .onFailure { error -> _kernelStatus.value = "Kernel index unavailable: ${error.message}" }
-                _kernelBusy.value = false
-            }
+            // Neither in the fetched index nor on disk: publish the index so the list offers a
+            // kernel that actually exists instead of retrying this pick.
+            runCatchingCancellable { KernelManager.fetchIndex() }
+                .onSuccess { _kernels.value = it.kernels }
             return
         }
-        if (_kernelBusy.value) return
-        if (KernelManager.isInstalled(getApplication(), id)) {
-            runCatching { KernelManager.activate(getApplication(), id) }
-                .onSuccess {
-                    onKernelActivated(id)
-                    _kernelStatus.value = "${kernel.name} selected. Restart the service to load it."
-                }
-            return
+        runCatchingCancellable {
+            withContext(Dispatchers.IO) { KernelManager.install(context, kernel) }
         }
-        viewModelScope.launch {
-            _kernelBusy.value = true
-            _kernelStatus.value = "Downloading ${kernel.name}"
-            runCatching { KernelManager.install(getApplication(), kernel) }
-                .onSuccess {
-                    KernelManager.activate(getApplication(), kernel.id)
-                    refreshInstalledKernelCommits()
-                    onKernelActivated(kernel.id)
-                    _kernelStatus.value = "${kernel.name} selected. Restart the service to load it."
-                }
-                .onFailure { error -> _kernelStatus.value = "Kernel install failed: ${error.message}" }
-            _kernelBusy.value = false
-        }
-    }
-
-    fun installCustomPlugin(uri: Uri, onFinished: (Boolean) -> Unit = {}) {
-        if (_kernelBusy.value) return
-        viewModelScope.launch {
-            _kernelBusy.value = true
-            _kernelStatus.value = "Installing custom kernel"
-            var installed = false
-            runCatching {
-                getApplication<Application>().contentResolver.openInputStream(uri)
-                    ?.use { KernelManager.installPlugin(getApplication(), it) }
-                    ?: error("Unable to read kernel plugin")
+            .onSuccess {
+                withContext(Dispatchers.IO) { KernelManager.activate(context, kernel.id) }
+                refreshInstalledKernels()
+                onKernelActivated(kernel.id)
             }
-                .onSuccess { kernel ->
-                    _kernels.value = (_kernels.value.filterNot { it.id == kernel.id } + kernel)
-                        .sortedBy { it.id }
-                    KernelManager.activate(getApplication(), kernel.id)
-                    refreshInstalledKernelCommits()
-                    onKernelActivated(kernel.id)
-                    _kernelStatus.value = "${kernel.name} selected. Restart the service to load it."
-                    installed = true
-                }
-                .onFailure { error -> _kernelStatus.value = "Custom kernel install failed: ${error.message}" }
-            _kernelBusy.value = false
-            onFinished(installed)
-        }
     }
 
-    fun installCustomPluginUrl(url: String, onFinished: (Boolean) -> Unit = {}) {
-        if (_kernelBusy.value) return
-        viewModelScope.launch {
-            _kernelBusy.value = true
-            _kernelStatus.value = "Downloading custom kernel"
-            var installed = false
-            runCatching { KernelManager.installPluginUrl(getApplication(), url.trim()) }
-                .onSuccess { kernel ->
-                    _kernels.value = (_kernels.value.filterNot { it.id == kernel.id } + kernel)
-                        .sortedBy { it.id }
-                    KernelManager.activate(getApplication(), kernel.id)
-                    refreshInstalledKernelCommits()
-                    onKernelActivated(kernel.id)
-                    _kernelStatus.value = "${kernel.name} selected. Restart the service to load it."
-                    installed = true
-                }
-                .onFailure { error -> _kernelStatus.value = "Custom kernel install failed: ${error.message}" }
-            _kernelBusy.value = false
-            onFinished(installed)
+    private suspend fun activateKernel(id: String) {
+        val context = getApplication<Application>()
+        runCatchingCancellable {
+            withContext(Dispatchers.IO) { KernelManager.activate(context, id) }
         }
+            .onSuccess { onKernelActivated(id) }
     }
 
-    private fun refreshEbpfAvailability() {
-        val available =
-            _rootAvailable.value && KernelManager.isEbpfKernelActive(getApplication())
-        _ebpfAvailable.value = available
-        if (!available && runMode.value == RunMode.Ebpf) {
-            controller.setRunMode(if (_rootAvailable.value) RunMode.Tun else RunMode.VpnService)
-        }
+    /** Pure probe: whether an eBPF kernel is installed and running. It never touches the config. */
+    private suspend fun refreshEbpfAvailability() {
+        _ebpfAvailable.value =
+            _rootAvailable.value &&
+                withContext(Dispatchers.IO) { KernelManager.isEbpfKernelActive(getApplication()) }
     }
 
-    private fun onKernelActivated(id: String) {
+    /**
+     * The configured mode is eBPF but nothing can run it: fall back to a mode this device supports.
+     * Only ever reached from a kernel change, so merely opening settings cannot rewrite the stored
+     * run mode (and restart the runtime) behind the user's back.
+     */
+    private suspend fun failOverFromEbpf() {
+        if (_ebpfAvailable.value || runMode.value != RunMode.Ebpf) return
+        controller.setRunMode(if (_rootAvailable.value) RunMode.Tun else RunMode.VpnService)
+    }
+
+    private suspend fun onKernelActivated(id: String) {
         val wasEbpf = runMode.value == RunMode.Ebpf
         _activeKernelId.value = id
         refreshEbpfAvailability()
+        failOverFromEbpf()
         if (!wasEbpf || _ebpfAvailable.value) controller.requestRestartIfRunning()
     }
 
-    private suspend fun refreshInstalledKernelCommits() {
-        _installedKernelCommits.value =
+    /**
+     * Reads what is installed once, off the main thread. This is the only source the UI consults:
+     * probing the kernel directory reads (and ELF-scans) every candidate, which must not happen
+     * during composition or from a non-suspend handler.
+     */
+    private suspend fun refreshInstalledKernels() {
+        _installedKernels.value =
             withContext(Dispatchers.IO) {
-                KernelManager.installedKernelIds(getApplication()).mapNotNull { id ->
-                    KernelManager.installedCommit(getApplication(), id)?.let { id to it }
-                }.toMap()
+                val context = getApplication<Application>()
+                KernelManager.installedKernelIds(context).map { id ->
+                    InstalledKernelUi(
+                        id = id,
+                        name = KernelManager.installedName(context, id),
+                        commit = KernelManager.installedCommit(context, id),
+                    )
+                }
             }
     }
 }
 
-private data class KernelUiSelection(
-    val kernels: List<KernelManager.Kernel>,
-    val status: String,
-    val busy: Boolean,
-    val active: String,
-    val installedCommits: Map<String, String>,
+/** An installed kernel as the settings list shows it: identity, display name, source commit. */
+data class InstalledKernelUi(
+    val id: String,
+    val name: String,
+    val commit: String?,
 )
 
-data class NetworkSettingsUiState(val configuredMode: RunMode = RunMode.VpnService)
+private data class KernelUiSelection(
+    val kernels: List<KernelManager.Kernel>,
+    val busy: Boolean,
+    val active: String,
+    val installed: List<InstalledKernelUi>,
+)
 
 data class CommonTunOptionsUiState(
     val bypassPrivateNetwork: Boolean = false,
@@ -510,8 +483,4 @@ data class TunServiceOptionsUiState(
     val common: CommonTunOptionsUiState = CommonTunOptionsUiState(),
     val allowBypass: Boolean = false,
     val systemProxy: Boolean = false,
-)
-
-data class EbpfServiceOptionsUiState(
-    val bypassCn: Boolean = true,
 )

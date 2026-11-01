@@ -44,6 +44,7 @@ class AppTrafficStatisticsCollector(
     private var lastTotalUpload = NO_BASELINE
     private var lastTotalDownload = NO_BASELINE
     private var lastProfileId: String? = null
+    private var lastCollectionAtNanos = 0L
 
     init {
         startCollection()
@@ -72,6 +73,7 @@ class AppTrafficStatisticsCollector(
         lastTotalUpload = trafficStatisticsStore.getLastTrafficUpload()
         lastTotalDownload = trafficStatisticsStore.getLastTrafficDownload()
         lastProfileId = trafficStatisticsStore.getLastProfileId()
+        lastCollectionAtNanos = 0L
         connectionBaselines.clear()
         collectTrafficDataSafely()
         PollingTimers.ticks(PollingTimerSpecs.TrafficStatsCollection).collect {
@@ -88,55 +90,36 @@ class AppTrafficStatisticsCollector(
     }
 
     private suspend fun collectTrafficData() {
-        val totalTraffic = querySource.queryTrafficTotal()
         val snapshot = querySource.queryConnections()
+        val totalTraffic =
+            TrafficData(
+                upload = snapshot.uploadTotal,
+                download = snapshot.downloadTotal,
+            )
+        val nowNanos = System.nanoTime()
+        val elapsedMs =
+            if (lastCollectionAtNanos == 0L) {
+                0L
+            } else {
+                ((nowNanos - lastCollectionAtNanos) / NANOS_PER_MILLI).coerceAtLeast(1L)
+            }
+        lastCollectionAtNanos = nowNanos
         val timestamp = System.currentTimeMillis()
-        val currentProfileId =
-            querySource.currentProfileId()
-                ?: runCatching { querySource.queryActiveProfileId() }.getOrNull()
+        val currentProfileId = querySource.currentProfileId() ?: bestEffortActiveProfileId()
 
-        if (lastTotalUpload < 0L || lastTotalDownload < 0L) {
-            initializeTotals(
-                totalTraffic = totalTraffic,
-                profileId = currentProfileId,
-                forcePersist = true,
-            )
-            bootstrapConnectionBaselines(snapshot.connections)
-            return
-        }
-
-        if (currentProfileId != lastProfileId) {
-            initializeTotals(
-                totalTraffic = totalTraffic,
-                profileId = currentProfileId,
-                forcePersist = true,
-            )
-            bootstrapConnectionBaselines(snapshot.connections)
+        if (lastTotalUpload < 0L || lastTotalDownload < 0L || currentProfileId != lastProfileId) {
+            rebaseline(totalTraffic, currentProfileId, snapshot.connections)
             return
         }
 
         if (connectionBaselines.isEmpty()) {
-            recordUnattributedDeltaIfNeeded(
-                timestamp = timestamp,
-                currentUpload = totalTraffic.upload,
-                currentDownload = totalTraffic.download,
-            )
-            initializeTotals(
-                totalTraffic = totalTraffic,
-                profileId = currentProfileId,
-                forcePersist = true,
-            )
-            bootstrapConnectionBaselines(snapshot.connections)
+            // Never record the persisted gap as one delta after a process restart.
+            rebaseline(totalTraffic, currentProfileId, snapshot.connections)
             return
         }
 
         if (totalTraffic.upload < lastTotalUpload || totalTraffic.download < lastTotalDownload) {
-            initializeTotals(
-                totalTraffic = totalTraffic,
-                profileId = currentProfileId,
-                forcePersist = true,
-            )
-            bootstrapConnectionBaselines(snapshot.connections)
+            rebaseline(totalTraffic, currentProfileId, snapshot.connections)
             return
         }
 
@@ -148,6 +131,13 @@ class AppTrafficStatisticsCollector(
             )
         val totalUploadDelta = totalTraffic.upload - lastTotalUpload
         val totalDownloadDelta = totalTraffic.download - lastTotalDownload
+        if (
+            isImplausibleDelta(totalUploadDelta, elapsedMs) ||
+                isImplausibleDelta(totalDownloadDelta, elapsedMs)
+        ) {
+            rebaseline(totalTraffic, currentProfileId, snapshot.connections)
+            return
+        }
         val unattributedUpload = (totalUploadDelta - attributedTotals.upload).coerceAtLeast(0L)
         val unattributedDownload =
             (totalDownloadDelta - attributedTotals.download).coerceAtLeast(0L)
@@ -168,7 +158,6 @@ class AppTrafficStatisticsCollector(
         initializeTotals(
             totalTraffic = totalTraffic,
             profileId = currentProfileId,
-            forcePersist = false,
         )
     }
 
@@ -199,15 +188,7 @@ class AppTrafficStatisticsCollector(
         val baseline = connectionBaselines[connection.id]
         val identity = resolveIdentity(connection, baseline)
 
-        val updatedBaseline =
-            ConnectionTrafficBaseline(
-                id = connection.id,
-                upload = connection.upload,
-                download = connection.download,
-                appKey = identity.appKey,
-                packageName = identity.packageName,
-                appName = identity.appName,
-            )
+        val updatedBaseline = baselineFor(connection, identity)
 
         if (baseline == null) {
             connectionBaselines[connection.id] = updatedBaseline
@@ -257,26 +238,50 @@ class AppTrafficStatisticsCollector(
         return appIdentityResolver.resolve(connection.metadata)
     }
 
+    /** Starts a fresh measurement window: totals and per-connection baselines move together. */
+    private fun rebaseline(
+        totalTraffic: TrafficData,
+        profileId: String?,
+        connections: List<ConnectionInfo>,
+    ) {
+        initializeTotals(totalTraffic = totalTraffic, profileId = profileId)
+        bootstrapConnectionBaselines(connections)
+    }
+
+    /**
+     * Active profile id from the runtime, or null when the runtime has not published one yet.
+     * Best effort only, but cancellation must still reach the collector's owner.
+     */
+    private suspend fun bestEffortActiveProfileId(): String? =
+        try {
+            querySource.queryActiveProfileId()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            Timber.tag(TAG).d(error, "Active profile id unavailable")
+            null
+        }
+
     private fun bootstrapConnectionBaselines(connections: List<ConnectionInfo>) {
         connectionBaselines.clear()
         connections.forEach { connection ->
-            val identity = appIdentityResolver.resolve(connection.metadata)
             connectionBaselines[connection.id] =
-                ConnectionTrafficBaseline(
-                    id = connection.id,
-                    upload = connection.upload,
-                    download = connection.download,
-                    appKey = identity.appKey,
-                    packageName = identity.packageName,
-                    appName = identity.appName,
-                )
+                baselineFor(connection, appIdentityResolver.resolve(connection.metadata))
         }
     }
+
+    private fun baselineFor(connection: ConnectionInfo, identity: AppIdentity) =
+        ConnectionTrafficBaseline(
+            upload = connection.upload,
+            download = connection.download,
+            appKey = identity.appKey,
+            packageName = identity.packageName,
+            appName = identity.appName,
+        )
 
     private fun initializeTotals(
         totalTraffic: TrafficData,
         profileId: String?,
-        forcePersist: Boolean,
     ) {
         lastTotalUpload = totalTraffic.upload
         lastTotalDownload = totalTraffic.download
@@ -285,61 +290,48 @@ class AppTrafficStatisticsCollector(
             upload = totalTraffic.upload,
             download = totalTraffic.download,
             profileId = profileId,
-            forcePersist = forcePersist,
-        )
-    }
-
-    private suspend fun recordUnattributedDeltaIfNeeded(
-        timestamp: Long,
-        currentUpload: Long,
-        currentDownload: Long,
-    ) {
-        if (currentUpload < lastTotalUpload || currentDownload < lastTotalDownload) {
-            return
-        }
-        val uploadDelta = currentUpload - lastTotalUpload
-        val downloadDelta = currentDownload - lastTotalDownload
-        if (uploadDelta <= 0L && downloadDelta <= 0L) {
-            return
-        }
-        trafficStatisticsStore.recordAppTrafficBatch(
-            timestamp = timestamp,
-            records =
-                listOf(
-                    TrafficStatisticsBuckets.buildUnattributedRecord(
-                        uploadDelta = uploadDelta,
-                        downloadDelta = downloadDelta,
-                    )
-                ),
         )
     }
 
     private fun resetBaselines() {
-        trafficStatisticsStore.flushNow()
         connectionBaselines.clear()
         lastTotalUpload = NO_BASELINE
         lastTotalDownload = NO_BASELINE
         lastProfileId = null
+        lastCollectionAtNanos = 0L
+    }
+
+    /**
+     * A corrupt/transient total must not be stored as one enormous delta. The cap is deliberately
+     * far above any real device throughput; it only catches impossible jumps.
+     */
+    private fun isImplausibleDelta(delta: Long, elapsedMs: Long): Boolean {
+        if (elapsedMs <= 0L) return false
+        val maxDelta =
+            elapsedMs.coerceAtMost(Long.MAX_VALUE / MAX_BYTES_PER_MILLI) * MAX_BYTES_PER_MILLI
+        return delta > maxDelta
     }
 
     private fun buildTrafficBucketKey(appKey: String, routeKey: String?): String =
         if (routeKey.isNullOrBlank()) appKey else "$appKey::$routeKey"
 
-    private fun resolveRouteKey(connection: ConnectionInfo): String =
+    /** Chain identity of the connection; the single place that decides which chain wins. */
+    private fun preferredChainLabel(connection: ConnectionInfo): String? =
         connection.chains.lastOrNull()?.takeIf(String::isNotBlank)
             ?: connection.providerChains.lastOrNull()?.takeIf(String::isNotBlank)
+
+    private fun resolveRouteKey(connection: ConnectionInfo): String =
+        preferredChainLabel(connection)
             ?: connection.rulePayload.takeIf(String::isNotBlank)
             ?: connection.rule.takeIf(String::isNotBlank)
             ?: TrafficStatisticsBuckets.UNATTRIBUTED_ROUTE_KEY
 
     private fun resolveRouteLabel(connection: ConnectionInfo, routeKey: String?): String =
-        connection.chains.lastOrNull()?.takeIf(String::isNotBlank)
-            ?: connection.providerChains.lastOrNull()?.takeIf(String::isNotBlank)
+        preferredChainLabel(connection)
             ?: routeKey
             ?: TrafficStatisticsBuckets.UNATTRIBUTED_ROUTE_NAME
 
     fun stop() {
-        trafficStatisticsStore.flushNow()
         monitoringJob?.cancel()
         monitoringJob = null
         collectionJob?.cancel()
@@ -350,5 +342,7 @@ class AppTrafficStatisticsCollector(
     companion object {
         private const val TAG = "AppTrafficStatsCollector"
         private const val NO_BASELINE = -1L
+        private const val NANOS_PER_MILLI = 1_000_000L
+        private const val MAX_BYTES_PER_MILLI = 64L * 1024L * 1024L
     }
 }

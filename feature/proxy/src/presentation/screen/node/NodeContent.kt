@@ -24,120 +24,115 @@ package com.github.yumeyucca.yumebox.presentation.screen.node
 
 
 import android.annotation.SuppressLint
-import androidx.compose.animation.*
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.github.yumeyucca.yumebox.core.model.Proxy
 import com.github.yumeyucca.yumebox.data.model.normalizeProxySheetHeightFraction
 import com.github.yumeyucca.yumebox.domain.model.ProxyGroupInfo
 import com.github.yumeyucca.yumebox.domain.model.isSelectable
-import com.github.yumeyucca.yumebox.presentation.component.LocalTopBarHazeState
-import com.github.yumeyucca.yumebox.presentation.component.LocalTopBarHazeStyle
 import com.github.yumeyucca.yumebox.presentation.theme.UiDp
-import com.github.yumeyucca.yumebox.presentation.theme.YumeHaze.chromeEffect
-import com.github.yumeyucca.yumebox.presentation.theme.rememberRowReveal
+import com.github.yumeyucca.yumebox.presentation.component.FloatingSheetHeaderDefaults
+import com.github.yumeyucca.yumebox.presentation.util.isAtTop
 import com.github.yumeyucca.yumebox.presentation.viewmodel.ProxyDelayTestProgress
-import dev.chrisbanes.haze.HazePerformanceMode
-import dev.chrisbanes.haze.HazeProgressive
-import dev.chrisbanes.haze.HazeState
 import kotlinx.coroutines.flow.StateFlow
-import dev.chrisbanes.haze.blur.HazeBlurStyle
-import com.github.yumeyucca.yumebox.core.locale.YumeTxt
-import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.utils.overScrollHorizontal
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 
+// sheet 内的分组/节点列表内边距:库层标题行留空后,内容从卡片顶 + 42dp 开始,
+// 再让出 34dp,首行正好落在 76dp 悬浮带的下沿。
+// 水平 16dp 是内容自己的内缩——标题带和两侧圆钮是满卡片宽,所以 sheet 的库层 insideMargin
+// 水平值已置 0,由这里补上。
 val NodeSheetContentPadding =
-    PaddingValues(start = UiDp.dp0, end = UiDp.dp0, top = UiDp.dp8, bottom = UiDp.dp16)
-
-private fun LazyListState.isScrolledFromTop(): Boolean =
-    firstVisibleItemIndex > 0 || firstVisibleItemScrollOffset > 0
-
-private fun Modifier.nodeTabHaze(state: HazeState?, style: HazeBlurStyle?): Modifier =
-    chromeEffect(
-        state = state,
-        style = style,
-        blurRadius = UiDp.dp30,
-        progressive =
-            HazeProgressive.verticalGradient(
-                startIntensity = 1f,
-                endIntensity = 0f,
-            ),
-        performanceMode = HazePerformanceMode.Performance,
+    PaddingValues(
+        start = UiDp.dp16,
+        end = UiDp.dp16,
+        top = FloatingSheetHeaderDefaults.ContentTopInset,
+        bottom = UiDp.dp16,
     )
 
-@Composable
-internal fun NodeTabs(groups: List<ProxyGroupInfo>, selectedIndex: Int, onSelect: (Int) -> Unit) {
-    val hazeState = LocalTopBarHazeState.current
-    val hazeStyle = LocalTopBarHazeStyle.current
-    val listState = rememberLazyListState()
-
-    LaunchedEffect(selectedIndex, groups.size) {
-        if (groups.isEmpty()) return@LaunchedEffect
-        val target = (selectedIndex - 1).coerceAtLeast(0).coerceAtMost(groups.lastIndex)
-        if (target != listState.firstVisibleItemIndex) {
-            listState.animateScrollToItem(target)
+/**
+ * 节点行的唯一点击语义:可选中分组点击即选中;不可选中的分组(自动选择/负载均衡)没有可选
+ * 目标,点击改测速。分组页、sheet 页和多列网格共用这一份,不再各写一遍 if。
+ */
+internal fun nodeClickHandler(
+    group: ProxyGroupInfo,
+    onSelectProxy: (String) -> Unit,
+    onTestDelay: () -> Unit,
+): (String) -> Unit =
+    { proxyName ->
+        if (group.isSelectable) {
+            onSelectProxy(proxyName)
+        } else {
+            onTestDelay()
         }
     }
 
-    LazyRow(
-        state = listState,
+/**
+ * The node-card rows shared by the sheet list and the multi-column page: one card per proxy, keyed by
+ * name, with the outer/item padding the caller's layout needs (the grid column passes none of its
+ * own, the page passes the horizontal gutter).
+ */
+internal fun LazyListScope.nodeGridItems(
+    proxies: List<Proxy>,
+    selectedProxyName: String,
+    onProxyClick: ((String) -> Unit)? = null,
+    onProxyTest: ((String) -> Unit)? = null,
+    testingProxyNames: Set<String> = emptySet(),
+    outerHorizontalPadding: Dp = UiDp.dp0,
+    itemVerticalPadding: Dp = UiDp.dp0,
+) {
+    itemsIndexed(
+        items = proxies,
+        key = { _, proxy -> proxy.name },
+        contentType = { _, _ -> "NodeCard1" },
+    ) { _, proxy ->
+        NodeCard(
+            proxy = proxy,
+            isSelected = proxy.name == selectedProxyName,
+            onClick = onProxyClick,
+            onTestClick = onProxyTest,
+            isDelayTesting = testingProxyNames.contains(proxy.name),
+            showCountryFlag = true,
+            modifier =
+                Modifier.padding(
+                    horizontal = outerHorizontalPadding,
+                    vertical = itemVerticalPadding,
+                ),
+        )
+    }
+}
+
+/**
+ * The one sheet list shape: full width, capped at the sheet fraction, same spacing and padding.
+ * Both the group list and the node list are this list, so they cannot drift apart.
+ */
+@Composable
+private fun NodeSheetList(
+    sheetHeight: Dp,
+    listState: LazyListState,
+    content: LazyListScope.() -> Unit,
+) {
+    LazyColumn(
         modifier =
             Modifier
                 .fillMaxWidth()
-                .nodeTabHaze(hazeState, hazeStyle)
-                .background(MiuixTheme.colorScheme.surface)
-                .overScrollHorizontal(),
-        contentPadding =
-            PaddingValues(start = UiDp.dp14, end = UiDp.dp14, top = UiDp.dp10, bottom = UiDp.dp10),
-        horizontalArrangement = Arrangement.spacedBy(UiDp.dp8),
+                // Wrap up to the fraction cap instead of always forcing it: short group/node lists
+                // get a content-sized sheet (NexioSchedule semantics), long ones cap and scroll.
+                .heightIn(max = sheetHeight)
+                .overScrollVertical(),
+        state = listState,
+        verticalArrangement = Arrangement.spacedBy(UiDp.dp10),
+        contentPadding = NodeSheetContentPadding,
         overscrollEffect = null,
-    ) {
-        itemsIndexed(groups, key = { _, group -> group.name }) { index, group ->
-            val selected = index == selectedIndex
-            val background =
-                if (selected) {
-                    MiuixTheme.colorScheme.primary
-                } else {
-                    MiuixTheme.colorScheme.surface
-                }
-            val textColor =
-                if (selected) {
-                    MiuixTheme.colorScheme.onPrimary
-                } else {
-                    MiuixTheme.colorScheme.onSurface
-                }
-
-            Box(
-                modifier =
-                    Modifier
-                        .clip(RoundedCornerShape(UiDp.dp999))
-                        .background(background)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = { onSelect(index) },
-                        )
-                        .padding(horizontal = UiDp.dp11, vertical = UiDp.dp6)
-            ) {
-                Text(text = group.name, color = textColor, style = MiuixTheme.textStyles.footnote1)
-            }
-        }
-    }
+        content = content,
+    )
 }
 
 @SuppressLint("ConfigurationScreenWidthHeight")
@@ -158,31 +153,20 @@ internal fun NodeGroupSheetContent(
     listState: LazyListState = rememberLazyListState(),
 ) {
     val sheetHeight = rememberNodeSheetHeight(sheetHeightFraction)
-    val revealCount = rememberRowReveal(itemCount = groups.size, listState = listState)
 
     LaunchedEffect(testingGroupNames) {
-        if (testingGroupNames.isNotEmpty() && listState.isScrolledFromTop()) {
+        if (testingGroupNames.isNotEmpty() && !listState.isAtTop) {
             listState.animateScrollToItem(0)
         }
     }
 
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(sheetHeight)
-            .overScrollVertical(),
-        state = listState,
-        verticalArrangement = Arrangement.spacedBy(UiDp.dp12),
-        contentPadding = NodeSheetContentPadding,
-        overscrollEffect = null,
-    ) {
+    NodeSheetList(sheetHeight = sheetHeight, listState = listState) {
         nodeGroupItems(
             groups = groups,
             onGroupClick = onGroupClick,
             onGroupTest = onGroupTest,
             testingGroupNames = testingGroupNames,
             itemVerticalPadding = UiDp.dp0,
-            revealCount = revealCount,
         )
     }
 }
@@ -191,7 +175,7 @@ internal fun NodeGroupSheetContent(
 fun NodeSheetContent(
     group: ProxyGroupInfo,
     onSelectProxy: (String) -> Unit,
-    testingGroupNames: StateFlow<Set<String>>,
+    testingGroupNames: Set<String>,
     delayTestProgress: StateFlow<ProxyDelayTestProgress?>,
     testingProxyNames: Set<String> = emptySet(),
     onTestDelay: () -> Unit,
@@ -200,23 +184,8 @@ fun NodeSheetContent(
     listState: LazyListState = rememberLazyListState(),
 ) {
     val sheetHeight = rememberNodeSheetHeight(sheetHeightFraction)
-    val revealCount = rememberRowReveal(
-        itemCount = group.proxies.size,
-        replayKey = group.name,
-        listState = listState,
-    )
 
-    LazyColumn(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .height(sheetHeight)
-                .overScrollVertical(),
-        state = listState,
-        verticalArrangement = Arrangement.spacedBy(UiDp.dp12),
-        contentPadding = NodeSheetContentPadding,
-        overscrollEffect = null,
-    ) {
+    NodeSheetList(sheetHeight = sheetHeight, listState = listState) {
         item(key = "__refresh_indicator__") {
             GroupDelayRefreshIndicator(
                 groupName = group.name,
@@ -228,16 +197,9 @@ fun NodeSheetContent(
         nodeGridItems(
             proxies = group.proxies,
             selectedProxyName = group.now,
-            onProxyClick = { proxyName ->
-                if (group.isSelectable) {
-                    onSelectProxy(proxyName)
-                } else {
-                    onTestDelay()
-                }
-            },
+            onProxyClick = nodeClickHandler(group, onSelectProxy, onTestDelay),
             onProxyTest = onTestProxyDelay,
             testingProxyNames = testingProxyNames,
-            revealCount = revealCount,
         )
     }
 }

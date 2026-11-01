@@ -21,80 +21,92 @@
 package com.github.yumeyucca.yumebox.presentation.component
 
 import androidx.compose.runtime.Stable
-import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.compositionLocalOf
+import com.arkivanov.decompose.router.stack.ChildStack
 import com.arkivanov.decompose.router.stack.StackNavigation
 import com.arkivanov.decompose.router.stack.navigate
 import com.arkivanov.decompose.router.stack.pop
 import com.arkivanov.decompose.router.stack.pushNew
+import com.arkivanov.decompose.value.Value
 
 /**
- * Thin wrapper over the Decompose navigation stack with Compose-observable route history.
+ * Sends navigation commands to one Decompose child stack.
  *
- * Replaces compose-destinations' DestinationsNavigator. The [push]/[pop]/[replaceAll]/[popUntil]
- * methods cover every navigation pattern previously used in YumeBox. The
- * [navigateUp]/[popBackStack] aliases keep call sites that came from the compose-destinations API
- * churn-free.
+ * There is deliberately no Compose mirror of the route history. The child stack is the only source
+ * of truth; UI code that needs to observe it subscribes to the stack's [Value] directly.
  */
 @Stable
-class Navigator(initial: List<Any> = emptyList()) {
-    val backStack = mutableStateListOf<Any>().apply { addAll(initial) }
+class Navigator {
     val navigation = StackNavigation<Any>()
-    /** Pushes [key] onto the stack unless it is already on top (mirrors launchSingleTop). */
-    fun push(key: Any) {
-        if (backStack.lastOrNull() != key) {
-            backStack.add(key)
-            navigation.pushNew(key)
-        }
+
+    private var stack: Value<ChildStack<Any, *>>? = null
+
+    /** Called once by the component that creates the child stack. */
+    fun bind(stack: Value<ChildStack<Any, *>>) {
+        this.stack = stack
     }
 
-    /** Pops the top entry. The root entry is never popped. Returns true if a pop happened. */
+    private fun appliedStack(): List<Any> =
+        stack?.value?.items?.map { it.configuration }.orEmpty()
+
+    /** The configuration currently on top, read from Decompose at call time. */
+    val currentRoute: Any?
+        get() = appliedStack().lastOrNull()
+
+    /**
+     * Pushes [key] with Decompose's own `pushNew` operation.
+     *
+     * Do not add another top-of-stack check here: `pushNew` already performs it against the applied
+     * stack. A second check against a cached list is what made re-entering a page fail.
+     */
+    fun push(key: Any) {
+        NavTrace.record("push $key")
+        navigation.pushNew(key)
+    }
+
+    /** Pops the active configuration, keeping the root configuration. */
     fun pop(): Boolean {
-        if (backStack.size <= 1) return false
+        if (appliedStack().size <= 1) return false
+        NavTrace.record("pop $currentRoute")
         navigation.pop()
         return true
     }
 
-    /** Keeps compatibility callers in sync after Decompose applies a navigation transaction. */
-    fun syncBackStack(configurations: List<Any>) {
-        if (backStack == configurations) return
-        backStack.clear()
-        backStack.addAll(configurations)
-    }
-
-    /** Replaces the entire stack with [keys]. */
+    /** Replaces the whole stack atomically. */
     fun replaceAll(keys: List<Any>) {
-        val uniqueKeys = keys.distinct()
-        if (backStack == uniqueKeys) return
-        backStack.clear()
-        backStack.addAll(uniqueKeys)
-        navigation.navigate { uniqueKeys }
+        val target = keys.distinct()
+        require(target.isNotEmpty()) { "A child stack must keep a root configuration" }
+        navigation.navigate { target }
     }
 
-    /** Replaces the top entry with [key]. */
+    /** Replaces only the active configuration. */
     fun replace(key: Any) {
-        if (backStack.lastOrNull() == key) return
-        if (backStack.isNotEmpty()) {
-            backStack.removeAt(backStack.lastIndex)
+        navigation.navigate { current ->
+            when {
+                current.isEmpty() -> listOf(key)
+                current.last() == key -> current
+                else -> current.dropLast(1) + key
+            }
         }
-        backStack.add(key)
-        navigation.navigate { backStack.toList() }
     }
 
-    /**
-     * Pops entries until [predicate] is satisfied for the top entry (inclusive of matched stays).
-     */
+    /** Pops configurations until [predicate] accepts the active one, always keeping the root. */
     fun popUntil(predicate: (Any) -> Boolean) {
-        val original = backStack.toList()
-        while (backStack.size > 1 && !predicate(backStack.last())) {
-            backStack.removeAt(backStack.lastIndex)
+        navigation.navigate { current ->
+            current.toMutableList().apply {
+                while (size > 1 && !predicate(last())) {
+                    removeAt(lastIndex)
+                }
+            }
         }
-        if (backStack == original) return
-        navigation.navigate { backStack.toList() }
     }
 
-    /** Compatibility alias for [pop] (compose-destinations API). */
     fun navigateUp(): Boolean = pop()
 
-    /** Compatibility alias for [pop] (compose-destinations API). */
     fun popBackStack(): Boolean = pop()
 }
+
+val LocalNavigator = compositionLocalOf<Navigator> { error("LocalNavigator is not provided") }
+
+/** Right-pane navigator, non-null only while the split shell is active. */
+val LocalDetailNavigator = compositionLocalOf<Navigator?> { null }

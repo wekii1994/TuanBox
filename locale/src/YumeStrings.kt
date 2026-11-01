@@ -50,6 +50,8 @@ public data class YumeStrings_About_Section(
 public data class YumeStrings_About_Link(
     public val TelegramGroup: String,
     public val TelegramChannel: String,
+    public val ProjectSource: String,
+    public val CoreSource: String,
 )
 
 public data class YumeStrings_About_Support(
@@ -85,11 +87,16 @@ public data class YumeStrings_AccessControl_Search(
 )
 
 public data class YumeStrings_AccessControl_AppList(
+    public val ScreenTitle: String,
     public val Title: String,
     public val Loading: String,
 )
 
 public data class YumeStrings_AccessControl_Settings(
+    public val Summary: String,
+    public val ModeTitle: String,
+    public val Enabled: String,
+    public val EnabledSummary: String,
     public val Title: String,
     public val ShowSystemApps: String,
     public val SelectedFirst: String,
@@ -105,6 +112,10 @@ public data class YumeStrings_AccessControl_Settings(
     public val ImportSuccess: String,
     public val ExportSuccess: String,
     public val ImportFailed: String,
+    public val ImportExportSummary: String,
+    public val ImportStrategy: String,
+    public val ImportMerge: String,
+    public val ImportOverwrite: String,
     public val RegionQuickSelect: String,
     public val ChinaApps: String,
     public val OverseasApps: String,
@@ -175,22 +186,66 @@ public data class YumeStrings_AppSettings_Interface(
     public val PredictiveBackTitle: String,
     public val PredictiveBackRestartSummary: String,
     public val PredictiveBackProgressTitle: String,
-    public val ClassicHomeTitle: String,
+    public val StatusBarSpacingTitle: String,
     public val SystemWallpaperTitle: String,
-    public val CustomIconTitle: String,
-    public val HomeQuoteTitle: String,
     public val HomeQuoteDefault: String,
-    public val EditHomeQuoteTitle: String,
     public val HomeWallpaperImportFailed: String,
+)
+
+public data class YumeStrings_AppSettings_Notification(
+    public val Title: String,
+    public val EntrySummary: String,
+    public val PreviewSection: String,
+    public val PreviewSummary: String,
+    public val ContentSection: String,
+    public val ContentSummary: String,
+    public val ShowTrafficTitle: String,
+    public val ShowTrafficSummary: String,
+    public val FirstLineTitle: String,
+    public val SecondLineTitle: String,
+    public val RightSideTitle: String,
+    public val RightSideSummary: String,
+    public val CustomTextTitle: String,
+    public val CustomTextEmpty: String,
+    public val HyperOsSection: String,
+    public val HyperOsSummary: String,
+    public val StandardSummary: String,
+    public val LiveUpdatesSection: String,
+    public val LiveUpdatesAppTitle: String,
+    public val LiveUpdatesTitle: String,
+    public val LiveUpdatesSummary: String,
+    public val LiveUpdatesEnabled: String,
+    public val LiveUpdatesDisabled: String,
+    public val LineProfileName: String,
+    public val LineStatus: String,
+    public val LineCurrentNode: String,
+    public val LineLiveTraffic: String,
+    public val LineUsedTraffic: String,
+    public val LineSessionTraffic: String,
+    public val LineTotalTraffic: String,
+    public val LineRemainingTraffic: String,
+    public val LineSubscriptionUsage: String,
+    public val LineExpiryDate: String,
+    public val LineCustomText: String,
+    public val LineHidden: String,
 )
 
 public data class YumeStrings_AppSettings_Privacy(
     public val HideFromRecentsTitle: String,
 )
 
+public data class YumeStrings_AppSettings_Appearance(
+    public val ThemeSummary: String,
+    public val ColorSummary: String,
+    public val InterfaceSummary: String,
+    public val BehaviorSummary: String,
+    public val PrivacySummary: String,
+    public val ServiceSummary: String,
+    public val NavigationSummary: String,
+    public val NetworkSummary: String,
+)
+
 public data class YumeStrings_AppSettings_ServiceSection(
-    public val TrafficNotificationTitle: String,
-    public val ExitUiWhenBackgroundTitle: String,
     public val SuperIslandTitle: String,
     public val ShizukuTitle: String,
     public val ShizukuNotRunning: String,
@@ -204,8 +259,11 @@ public data class YumeStrings_AppSettings_ServiceSection(
 )
 
 public data class YumeStrings_AppSettings_Network(
-    public val CustomUserAgentTitle: String,
-    public val CustomUserAgentSummaryDefault: String,
+    public val AutoCheckUpdateTitle: String,
+    public val UpdateChannelTitle: String,
+    public val UpdateChannelRelease: String,
+    public val UpdateChannelNightly: String,
+    public val UserAgentTitle: String,
 )
 
 public data class YumeStrings_AppSettings_WarningDialog(
@@ -225,6 +283,8 @@ public data class YumeStrings_AppSettings(
     public val Section: YumeStrings_AppSettings_Section,
     public val Behavior: YumeStrings_AppSettings_Behavior,
     public val Interface: YumeStrings_AppSettings_Interface,
+    public val Notification: YumeStrings_AppSettings_Notification,
+    public val Appearance: YumeStrings_AppSettings_Appearance,
     public val Privacy: YumeStrings_AppSettings_Privacy,
     public val ServiceSection: YumeStrings_AppSettings_ServiceSection,
     public val Network: YumeStrings_AppSettings_Network,
@@ -240,6 +300,13 @@ public data class YumeStrings_Component_ProfileCard(
     public val Export: String,
     public val Edit: String,
     public val Delete: String,
+    public val Share: String,
+    public val ShareFile: String,
+    public val ShareLink: String,
+    public val Enable: String,
+    public val Disable: String,
+    public val CurrentProfile: String,
+    public val NotEnabled: String,
     public val RemoteSubscription: String,
     public val LocalFile: String,
     public val LocalConfig: String,
@@ -249,6 +316,13 @@ public data class YumeStrings_Component_ProfileCard(
     public val ExpireAt: String,
     public val ExpireToday: String,
     public val Expired: String,
+    public val RemainingOfTotal: String,
+    public val ExpireInDays: String,
+    public val ExpireInMonths: String,
+    public val ExpireInYears: String,
+    public val ExpireInPermanent: String,
+    public val ExpireTodayShort: String,
+    public val ExpiredShort: String,
     public val JustNow: String,
     public val MinutesAgo: String,
     public val HoursAgo: String,
@@ -445,6 +519,13 @@ public data class YumeStrings_Editor_Title(
 public data class YumeStrings_Editor_Action(
     public val Format: String,
     public val Save: String,
+    public val Undo: String,
+    public val Redo: String,
+    public val FontSize: String,
+    public val Cut: String,
+    public val Copy: String,
+    public val Paste: String,
+    public val SelectAll: String,
 )
 
 public data class YumeStrings_Editor_Message(
@@ -475,6 +556,7 @@ public data class YumeStrings_Feature_ServiceStatus(
     public val OpenSubStorePanel: String,
     public val AllowLan: String,
     public val AutoCloseModeTitle: String,
+    public val RuntimeSection: String,
     public val AutoCloseModeAlwaysOn: String,
     public val AutoCloseMode5Min: String,
     public val AutoCloseMode10Min: String,
@@ -485,7 +567,7 @@ public data class YumeStrings_Feature_Panel(
     public val Section: String,
     public val SelectPanel: String,
     public val OpenMode: String,
-    public val OpenPanel: String,
+    public val OpenSection: String,
     public val Unknown: String,
     public val CreateShortcut: String,
     public val CreateShortcutSummary: String,
@@ -498,6 +580,10 @@ public data class YumeStrings_Feature_Panel(
 public data class YumeStrings_Feature_RemoteController(
     public val Section: String,
     public val ModeTitle: String,
+    public val ModeSummary: String,
+    public val BackendSection: String,
+    public val BackendSummary: String,
+    public val ManageSection: String,
     public val ControlBackend: String,
     public val AddBackend: String,
     public val EditBackend: String,
@@ -516,11 +602,8 @@ public data class YumeStrings_Feature_SubStore(
     public val Section: String,
     public val JavetLibraryReady: String,
     public val JavetLibraryDownload: String,
-    public val JavetAvailable: String,
-    public val DownloadHint: String,
     public val JavetDownloadSuccess: String,
     public val JavetDownloadFailed: String,
-    public val DownloadResources: String,
     public val DownloadResourcesSummary: String,
     public val Not32Bit: String,
     public val DownloadSubStoreFirst: String,
@@ -554,6 +637,13 @@ public data class YumeStrings_Feature_BackupRestore(
     public val ExportSummary: String,
     public val RestoreTitle: String,
     public val RestoreSummary: String,
+    public val ActionSection: String,
+    public val RestoreStrategySection: String,
+    public val RestoreStrategyTitle: String,
+    public val RestoreOverwrite: String,
+    public val RestoreMerge: String,
+    public val RestoreOverwriteSummary: String,
+    public val RestoreMergeSummary: String,
     public val Cancel: String,
     public val RestoreDialog: YumeStrings_Feature_BackupRestore_RestoreDialog,
     public val Message: YumeStrings_Feature_BackupRestore_Message,
@@ -582,16 +672,11 @@ public data class YumeStrings_Home_Message(
 )
 
 public data class YumeStrings_Home_Control(
-    public val HintAddProfile: String,
-    public val HintEnableProfile: String,
     public val Start: String,
     public val Stop: String,
 )
 
 public data class YumeStrings_Home_NodeInfo(
-    public val Node: String,
-    public val Delay: String,
-    public val Unknown: String,
     public val DelayValue: String,
 )
 
@@ -603,30 +688,20 @@ public data class YumeStrings_Home_Traffic(
     public val NoProfile: String,
 )
 
-public data class YumeStrings_Home_IpInfo(
-    public val ExitIp: String,
-)
-
 public data class YumeStrings_Home_Status(
     public val Connecting: String,
     public val Disconnecting: String,
     public val Running: String,
     public val Lost: String,
-    public val TapToStart: String,
 )
 
 public data class YumeStrings_Home_Settings(
     public val Title: String,
     public val Quote: String,
-    public val ClassicHome: String,
+    public val Author: String,
     public val ExpandSidebar: String,
+    public val StatusBarSpacing: String,
     public val ChangeWallpaper: String,
-)
-
-public data class YumeStrings_Home_ProxyMode(
-    public val Vpn: String,
-    public val Tun: String,
-    public val Ebpf: String,
 )
 
 public data class YumeStrings_Home_PreviewGuide(
@@ -642,17 +717,24 @@ public data class YumeStrings_Home_PreviewGuide(
     public val AddDescription: String,
 )
 
-public data class YumeStrings_Home(
+public data class YumeStrings_Home_Update(
     public val Title: String,
+    public val Action: String,
+    public val Later: String,
+    public val IconDescription: String,
+    public val NoNotes: String,
+    public val DownloadFailed: String,
+)
+
+public data class YumeStrings_Home(
     public val Message: YumeStrings_Home_Message,
     public val Control: YumeStrings_Home_Control,
     public val NodeInfo: YumeStrings_Home_NodeInfo,
     public val Traffic: YumeStrings_Home_Traffic,
-    public val IpInfo: YumeStrings_Home_IpInfo,
     public val Status: YumeStrings_Home_Status,
     public val Settings: YumeStrings_Home_Settings,
-    public val ProxyMode: YumeStrings_Home_ProxyMode,
     public val PreviewGuide: YumeStrings_Home_PreviewGuide,
+    public val Update: YumeStrings_Home_Update,
 )
 
 // ==================== Log ====================
@@ -667,7 +749,6 @@ public data class YumeStrings_Log_Level(
 )
 
 public data class YumeStrings_Log_Action(
-    public val Export: String,
     public val Copied: String,
 )
 
@@ -701,6 +782,8 @@ public data class YumeStrings_Log(
 
 public data class YumeStrings_MetaFeature_Section(
     public val ConnectionAndTraffic: String,
+    public val LogsAndConnections: String,
+    public val LogsAndConnectionsSummary: String,
     public val Routing: String,
 )
 
@@ -752,6 +835,7 @@ public data class YumeStrings_MetaFeature_Download(
 
 public data class YumeStrings_MetaFeature_AgeKey(
     public val Section: String,
+    public val Summary: String,
     public val X25519Title: String,
     public val HybridTitle: String,
     public val SecretKey: String,
@@ -781,19 +865,29 @@ public data class YumeStrings_NetworkSettings_Section(
 
 public data class YumeStrings_NetworkSettings_Advanced(
     public val DisableOverrideTitle: String,
+    public val DisableOverrideSummary: String,
+    public val ServiceOptionsSummary: String,
 )
 
 public data class YumeStrings_NetworkSettings_RunMode(
     public val SectionTitle: String,
+    public val CurrentTitle: String,
     public val VpnServiceTitle: String,
     public val VpnServiceSummary: String,
     public val TunTitle: String,
     public val TunSummary: String,
     public val EbpfTitle: String,
     public val EbpfSummary: String,
+    public val Notice: String,
 )
 
 public data class YumeStrings_NetworkSettings_VpnOptions(
+    public val ProtocolSectionTitle: String,
+    public val ProtocolSectionSummary: String,
+    public val NetworkSectionTitle: String,
+    public val NetworkSectionSummary: String,
+    public val DnsSectionTitle: String,
+    public val DnsSectionSummary: String,
     public val BypassPrivateTitle: String,
     public val DnsHijackTitle: String,
     public val AllowBypassTitle: String,
@@ -801,12 +895,14 @@ public data class YumeStrings_NetworkSettings_VpnOptions(
     public val SystemProxyTitle: String,
 )
 
-public data class YumeStrings_NetworkSettings_EbpfOptions(
-    public val BypassCnTitle: String,
-)
-
 public data class YumeStrings_NetworkSettings_TunOptions(
     public val Title: String,
+    public val InterfaceSectionTitle: String,
+    public val InterfaceSectionSummary: String,
+    public val ProtocolSectionTitle: String,
+    public val ProtocolSectionSummary: String,
+    public val RoutingSectionTitle: String,
+    public val RoutingSectionSummary: String,
     public val IfNameTitle: String,
     public val MtuTitle: String,
     public val StackTitle: String,
@@ -825,18 +921,12 @@ public data class YumeStrings_NetworkSettings_TunOptions(
 
 public data class YumeStrings_NetworkSettings_Kernel(
     public val ActiveTitle: String,
+    public val SectionSummary: String,
     public val BundledAlpha: String,
     public val RefreshTitle: String,
     public val DownloadTitle: String,
     public val FetchButton: String,
     public val DownloadButton: String,
-    public val CustomTitle: String,
-    public val CustomMethodTitle: String,
-    public val CustomUrlMethod: String,
-    public val CustomFileMethod: String,
-    public val CustomUrlLabel: String,
-    public val CustomChooseFile: String,
-    public val CustomInstallButton: String,
 )
 
 public data class YumeStrings_NetworkSettings_ProxyOptions(
@@ -901,7 +991,6 @@ public data class YumeStrings_NetworkSettings(
     public val Advanced: YumeStrings_NetworkSettings_Advanced,
     public val RunMode: YumeStrings_NetworkSettings_RunMode,
     public val VpnOptions: YumeStrings_NetworkSettings_VpnOptions,
-    public val EbpfOptions: YumeStrings_NetworkSettings_EbpfOptions,
     public val TunOptions: YumeStrings_NetworkSettings_TunOptions,
     public val Kernel: YumeStrings_NetworkSettings_Kernel,
     public val ProxyOptions: YumeStrings_NetworkSettings_ProxyOptions,
@@ -1054,6 +1143,7 @@ public data class YumeStrings_Override_Card(
     public val Delete: String,
     public val EditButton: String,
     public val DeleteButton: String,
+    public val Rename: String,
     public val Apply: String,
     public val ApplyButton: String,
 )
@@ -1080,6 +1170,7 @@ public data class YumeStrings_Override_Import(
     public val HttpError: String,
     public val UnsupportedType: String,
     public val EmptyJavaScript: String,
+    public val TooLarge: String,
 )
 
 public data class YumeStrings_Override_Export(
@@ -1108,6 +1199,7 @@ public data class YumeStrings_Override_Dialog_Button(
 public data class YumeStrings_Override_Dialog(
     public val Create: YumeStrings_Override_Dialog_Create,
     public val Delete: YumeStrings_Override_Dialog_Delete,
+    public val Rename: String,
     public val Button: YumeStrings_Override_Dialog_Button,
 )
 
@@ -1147,6 +1239,7 @@ public data class YumeStrings_Override(
 public data class YumeStrings_ProfilesPage_Action(
     public val UpdateAll: String,
     public val AddProfile: String,
+    public val Sort: String,
 )
 
 public data class YumeStrings_ProfilesPage_Empty(
@@ -1173,6 +1266,8 @@ public data class YumeStrings_ProfilesPage_Input(
     public val SelectFile: String,
     public val NewProfile: String,
     public val AgeSecretKey: String,
+    public val Optional: String,
+    public val Required: String,
 )
 
 public data class YumeStrings_ProfilesPage_QrScanner(
@@ -1247,6 +1342,8 @@ public data class YumeStrings_ProfilesPage_SettingsDialog(
     public val ChangeLink: String,
     public val CustomRouting: String,
     public val CustomRoutingSummary: String,
+    public val EnableCustomRouting: String,
+    public val OpenCustomRouting: String,
     public val NoDescription: String,
     public val EditProfile: String,
     public val OpenConfig: String,
@@ -1254,9 +1351,21 @@ public data class YumeStrings_ProfilesPage_SettingsDialog(
     public val SectionType: String,
     public val SectionSubscription: String,
     public val SectionOverride: String,
+    public val SectionSubscriptionSummary: String,
+    public val SectionOverrideSummary: String,
+    public val ProfileInfo: String,
+    public val ProfileStatus: String,
+    public val ProfileEnabled: String,
+    public val ProfileEnabledSummary: String,
+    public val ConfigFile: String,
+    public val ConfigFileSummary: String,
+    public val UpdatedAt: String,
+    public val ConfigFileSize: String,
     public val SaveFailed: String,
     public val ConfigMissing: String,
     public val AgeSecretKey: String,
+    public val AgeSection: String,
+    public val AgeSecretKeySummary: String,
 )
 
 public data class YumeStrings_ProfilesPage(
@@ -1347,6 +1456,7 @@ public data class YumeStrings_Providers_Message(
 
 public data class YumeStrings_Providers(
     public val Title: String,
+    public val TabTitle: String,
     public val Action: YumeStrings_Providers_Action,
     public val Empty: YumeStrings_Providers_Empty,
     public val Type: YumeStrings_Providers_Type,
@@ -1360,11 +1470,18 @@ public data class YumeStrings_Proxy_Mode(
     public val Direct: String,
 )
 
+public data class YumeStrings_Proxy_Tab(
+    public val Policy: String,
+    public val NodeGroups: String,
+)
+
 public data class YumeStrings_Proxy_Action(
     public val Panel: String,
     public val Test: String,
     public val Sort: String,
-    public val LocateCurrent: String,
+    public val Layout: String,
+    public val TabsMode: String,
+    public val SearchNodes: String,
     public val More: String,
 )
 
@@ -1401,6 +1518,8 @@ public data class YumeStrings_Proxy_SortMode(
 )
 
 public data class YumeStrings_Proxy_DisplayMode(
+    public val Single: String,
+    public val Double: String,
     public val SingleDetailed: String,
     public val SingleSimple: String,
     public val DoubleDetailed: String,
@@ -1410,6 +1529,7 @@ public data class YumeStrings_Proxy_DisplayMode(
 public data class YumeStrings_Proxy(
     public val Title: String,
     public val Mode: YumeStrings_Proxy_Mode,
+    public val Tab: YumeStrings_Proxy_Tab,
     public val Action: YumeStrings_Proxy_Action,
     public val Node: YumeStrings_Proxy_Node,
     public val Empty: YumeStrings_Proxy_Empty,
@@ -1457,6 +1577,7 @@ public data class YumeStrings_Service_Notification(
     public val NoNode: String,
     public val CurrentNode: String,
     public val CurrentNodeLabel: String,
+    public val SelectNode: String,
     public val RealtimeTraffic: String,
     public val SpeedLine: String,
     public val TotalTraffic: String,
@@ -1483,7 +1604,10 @@ public data class YumeStrings_Service(
 
 public data class YumeStrings_Settings_Section(
     public val UiSettings: String,
+    public val Extensions: String,
+    public val BackupRestore: String,
     public val More: String,
+    public val About: String,
 )
 
 public data class YumeStrings_Settings_UiSettings(
@@ -1495,6 +1619,10 @@ public data class YumeStrings_Settings_UiSettings(
     public val OverrideSummary: String,
     public val MetaFeatures: String,
     public val MetaFeaturesSummary: String,
+    public val AppSettingsEntry: String,
+    public val OverrideScript: String,
+    public val RemoteControl: String,
+    public val RemoteControlSummary: String,
 )
 
 public data class YumeStrings_Settings_More(
@@ -1504,6 +1632,8 @@ public data class YumeStrings_Settings_More(
     public val LogsSummary: String,
     public val Onboarding: String,
     public val OnboardingSummary: String,
+    public val BackupRestore: String,
+    public val BackupRestoreSummary: String,
     public val About: String,
     public val AboutSummary: String,
 )
@@ -1592,4 +1722,3 @@ public data class YumeStrings_Util_Error(
 public data class YumeStrings_Util(
     public val Error: YumeStrings_Util_Error,
 )
-

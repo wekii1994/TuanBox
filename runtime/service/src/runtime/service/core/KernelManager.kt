@@ -18,20 +18,19 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.isSuccess
 import io.ktor.http.HttpHeaders
 import io.ktor.utils.io.jvm.javaio.copyTo
+import com.github.yumeyucca.yumebox.core.util.LenientJson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 import org.tukaani.xz.XZInputStream
 import timber.log.Timber
 import java.io.File
-import java.io.InputStream
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
-import java.util.zip.ZipFile
+import java.util.concurrent.ConcurrentHashMap
 
 /** Downloadable `libmihomocore.so` catalog and installer. Bundled Alpha remains the fallback. */
 object KernelManager {
@@ -43,15 +42,13 @@ object KernelManager {
     private const val ACTIVE_FILE = "active-kernel"
     private const val ABI = "arm64-v8a"
     private const val SHELL_ABI = 1
-    private const val MAX_PLUGIN_BYTES = 128L * 1024 * 1024
-    private const val CUSTOM_PLUGIN_FORMAT = "kernel-plugin-v1"
-    private const val CERTIFIED_WORKFLOW = ".github/workflows/build-kernels.yml"
+    private const val MAX_KERNEL_BYTES = 128L * 1024 * 1024
     private const val CAPABILITY_EBPF = "ebpf"
     private const val LEGACY_EBPF_ID = "ebpf"
 
     // Kernel-Builder's manifest intentionally carries release, template and toolchain metadata;
     // the runtime validates the fields it consumes while tolerating future metadata additions.
-    private val json = Json { ignoreUnknownKeys = true }
+    private val json = LenientJson
     private val installMutex = Mutex()
     // Do not initialize the HTTP engine while the local/bundled core is starting. The network
     // client is only needed after the user opens Kernel settings or selects a remote slot.
@@ -59,22 +56,13 @@ object KernelManager {
         HttpClient(OkHttp) { expectSuccess = false }
     }
 
-    @Serializable
-    data class ReleaseMetadata(val kind: String = "official")
+    /** Verdict of the whole-file ELF scan, keyed by path and invalidated by size/mtime. */
+    private val verifiedCores = ConcurrentHashMap<String, CoreVerdict>()
 
-    @Serializable
-    data class BuilderMetadata(
-        val repository: String = "",
-        val workflow: String = "",
-        val runId: String = "",
-        val commit: String = "",
-        val format: String = "",
-    )
+    private data class CoreVerdict(val length: Long, val modifiedAt: Long, val valid: Boolean)
 
     @Serializable
     data class Index(
-        val release: ReleaseMetadata = ReleaseMetadata(),
-        val builder: BuilderMetadata? = null,
         val schemaVersion: Int,
         val defaultKernel: String,
         val abi: String,
@@ -129,66 +117,6 @@ object KernelManager {
         }
     }
 
-    suspend fun installPlugin(context: Context, source: InputStream): Kernel = installMutex.withLock {
-        withContext(Dispatchers.IO) {
-            val plugin = File(context.cacheDir, "kernel-plugin-${System.nanoTime()}.zip")
-            source.use { input ->
-                plugin.outputStream().buffered().use { output -> input.copyTo(output) }
-            }
-            try {
-                check(plugin.length() in 1..MAX_PLUGIN_BYTES) { "Invalid kernel plugin size" }
-                installPluginFile(context, plugin)
-            } finally {
-                plugin.delete()
-            }
-        }
-    }
-
-    suspend fun installPluginUrl(context: Context, url: String): Kernel = installMutex.withLock {
-        withContext(Dispatchers.IO) {
-            require(url.startsWith("https://")) { "Kernel plugin must use HTTPS" }
-            val plugin = File(context.cacheDir, "kernel-plugin-${System.nanoTime()}.zip")
-            try {
-                val response = client.get(url)
-                check(response.status.isSuccess()) { "Kernel plugin request failed: ${response.status}" }
-                response.headers[HttpHeaders.ContentLength]?.toLongOrNull()?.let { length ->
-                    check(length in 1..MAX_PLUGIN_BYTES) { "Invalid kernel plugin size" }
-                }
-                plugin.outputStream().buffered().use { output -> response.bodyAsChannel().copyTo(output) }
-                check(plugin.length() in 1..MAX_PLUGIN_BYTES) { "Invalid kernel plugin size" }
-                installPluginFile(context, plugin)
-            } finally {
-                plugin.delete()
-            }
-        }
-    }
-
-    private fun installPluginFile(context: Context, plugin: File): Kernel {
-        ZipFile(plugin).use { zip ->
-            val names = zip.entries().asSequence().map { it.name }.toSet()
-            check("kernel-index.json" in names) { "Kernel plugin index is missing" }
-            val index = json.decodeFromString<Index>(
-                zip.getInputStream(zip.getEntry("kernel-index.json")).bufferedReader().use { it.readText() },
-            )
-            validateCustomIndex(index)
-            check(names == setOf("kernel-index.json", index.kernels.single().asset)) {
-                "Kernel plugin contains unexpected files"
-            }
-            val kernel = index.kernels.single()
-            val archive = File(libraryDirectory(context), "$CORE_FILE_PREFIX${kernel.id}.so.xz.download")
-            try {
-                zip.getInputStream(zip.getEntry(kernel.asset)).use { input ->
-                    archive.outputStream().buffered().use { output -> input.copyTo(output) }
-                }
-                check(archive.length() == kernel.sizeBytes) { "Kernel plugin archive size mismatch" }
-                installArchive(context, kernel, archive)
-                return kernel
-            } finally {
-                archive.delete()
-            }
-        }
-    }
-
     private fun installArchive(context: Context, kernel: Kernel, archive: File): File {
         validateKernel(kernel)
         check(sha256(archive) == kernel.sha256) { "Kernel archive checksum mismatch" }
@@ -204,10 +132,12 @@ object KernelManager {
             val metadata = metadataFile(context, kernel.id)
             if (metadata.exists()) check(metadata.delete()) { "Unable to replace kernel metadata" }
             replace(target, expanded)
+            verifiedCores.remove(target.absolutePath)
             runCatching { writeInstalledKernel(context, kernel) }.onFailure {
                 Timber.tag("KernelManager").w(it, "Unable to save installed kernel version")
             }
         } finally {
+            verifiedCores.remove(expanded.absolutePath)
             expanded.delete()
         }
         return target
@@ -325,25 +255,12 @@ object KernelManager {
         index.kernels.forEach(::validateKernel)
     }
 
-    private fun validateCustomIndex(index: Index) {
-        validateIndex(index)
-        check(index.release.kind == "custom") { "Kernel plugin must be a custom release" }
-        val builder = index.builder ?: error("Kernel plugin builder metadata is missing")
-        check(builder.format == CUSTOM_PLUGIN_FORMAT && builder.workflow == CERTIFIED_WORKFLOW) {
-            "Kernel plugin was not produced by the certified workflow"
-        }
-        check(builder.repository.matches(Regex("[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+"))) {
-            "Kernel plugin builder repository is invalid"
-        }
-        check(index.kernels.size == 1) { "Kernel plugin must contain exactly one kernel" }
-    }
-
     private fun validateKernel(kernel: Kernel) {
         check(isKernelId(kernel.id)) { "Invalid kernel channel" }
         check(kernel.abi == ABI && kernel.shellAbi == SHELL_ABI) { "Incompatible kernel" }
         check(kernel.asset == "kernel-${kernel.id}.so.xz") { "Invalid kernel asset" }
         check(kernel.compression == "xz") { "Unsupported kernel compression" }
-        check(kernel.sizeBytes > 0 && kernel.sizeBytes <= MAX_PLUGIN_BYTES) { "Invalid kernel size" }
+        check(kernel.sizeBytes > 0 && kernel.sizeBytes <= MAX_KERNEL_BYTES) { "Invalid kernel size" }
         check(kernel.downloadUrl.startsWith("https://")) { "Kernel download must use HTTPS" }
         check(kernel.sha256.matches(Regex("[0-9a-f]{64}"))) { "Invalid kernel checksum" }
         check(kernel.commit.matches(Regex("[0-9a-f]{40}"))) { "Invalid kernel commit" }
@@ -410,7 +327,24 @@ object KernelManager {
         Timber.tag("KernelManager").w(it, "Unable to read embedded kernel version")
     }.getOrNull()
 
-    private fun isAndroidArm64Core(file: File): Boolean = runCatching {
+    /**
+     * [isInstalled] is called from composition and from non-suspend settings code, while this check
+     * reads the whole `.so` looking for the entry point. Memoising it per file identity keeps a
+     * recomposition from rescanning every installed kernel.
+     */
+    private fun isAndroidArm64Core(file: File): Boolean {
+        val path = file.absolutePath
+        val length = file.length()
+        val modifiedAt = file.lastModified()
+        verifiedCores[path]
+            ?.takeIf { it.length == length && it.modifiedAt == modifiedAt }
+            ?.let { return it.valid }
+        val valid = scanAndroidArm64Core(file)
+        verifiedCores[path] = CoreVerdict(length, modifiedAt, valid)
+        return valid
+    }
+
+    private fun scanAndroidArm64Core(file: File): Boolean = runCatching {
         if (!file.isFile || file.length() < 64) return false
         val header = ByteArray(64)
         file.inputStream().use { check(it.read(header) == header.size) }

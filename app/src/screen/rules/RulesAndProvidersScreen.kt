@@ -1,0 +1,159 @@
+/*
+ * This file is part of YumeBox.
+ *
+ * YumeBox is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ *
+ * Copyright (c)  YumeYucca 2025 - Present
+ *
+ */
+
+@file:Suppress("FunctionName")
+
+package com.github.yumeyucca.yumebox.screen.rules
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.dp
+import com.github.yumeyucca.yumebox.core.locale.YumeTxt
+import com.github.yumeyucca.yumebox.presentation.component.GlassScaffold
+import com.github.yumeyucca.yumebox.presentation.component.Navigator
+import com.github.yumeyucca.yumebox.presentation.component.SegmentedTabRow
+import com.github.yumeyucca.yumebox.presentation.component.TopBar
+import com.github.yumeyucca.yumebox.presentation.component.standalonePageInnerPadding
+import com.github.yumeyucca.yumebox.presentation.screen.ProvidersContent
+import com.github.yumeyucca.yumebox.presentation.theme.LocalTopBarBackdrop
+import com.github.yumeyucca.yumebox.presentation.theme.UiDp
+import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+
+private val TabBandInset = 66.dp
+
+/**
+ * Which of the two lists the shared page opens on. Public because [Route.RulesAndProviders] carries it
+ * as its navigation argument.
+ */
+enum class RulesProvidersTab {
+    Rules,
+    Providers,
+}
+
+@Composable
+fun RulesAndProvidersScreen(
+    navigator: Navigator,
+    initialTab: RulesProvidersTab = RulesProvidersTab.Rules,
+) {
+    val scrollBehavior = MiuixScrollBehavior()
+    var selectedTab by rememberSaveable(initialTab) { mutableStateOf(initialTab) }
+    val tabs =
+        RulesProvidersTab.entries.map { tab ->
+            when (tab) {
+                RulesProvidersTab.Rules -> YumeTxt.Rules.Title
+                RulesProvidersTab.Providers -> YumeTxt.Providers.Title
+            }
+        }
+    val rulesListState = rememberLazyListState()
+    val providersListState = rememberLazyListState()
+    val activeListState =
+        when (selectedTab) {
+            RulesProvidersTab.Rules -> rulesListState
+            RulesProvidersTab.Providers -> providersListState
+        }
+
+    GlassScaffold(
+        topBar = {
+            TopBar(
+                title = YumeTxt.Providers.TabTitle,
+                scrollBehavior = scrollBehavior,
+            )
+        },
+        contentOverlay = { scaffoldPadding ->
+            val density = LocalDensity.current
+            val tabRestTopPx =
+                with(density) { (scaffoldPadding.calculateTopPadding() + UiDp.dp20).toPx() }
+            val tabZonePx = with(density) { UiDp.dp46.toPx() }
+            val tabScrollPx by remember(activeListState, tabRestTopPx) {
+                derivedStateOf {
+                    if (activeListState.firstVisibleItemIndex == 0) {
+                        activeListState.firstVisibleItemScrollOffset.toFloat()
+                    } else {
+                        tabRestTopPx + tabZonePx
+                    }
+                }
+            }
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .graphicsLayer { translationY = tabRestTopPx - tabScrollPx }
+                        .background(MiuixTheme.colorScheme.surface)
+                        .padding(
+                            start = UiDp.dp12,
+                            end = UiDp.dp12,
+                            bottom = UiDp.dp4,
+                        ),
+            ) {
+                SegmentedTabRow(
+                    tabs = tabs,
+                    selectedTabIndex = RulesProvidersTab.entries.indexOf(selectedTab),
+                    onTabSelected = { index -> selectedTab = RulesProvidersTab.entries[index] },
+                    tabHeight = UiDp.dp42,
+                    backdrop = LocalTopBarBackdrop.current,
+                )
+            }
+        },
+    ) { innerPadding ->
+        val basePadding =
+            standalonePageInnerPadding(innerPadding)
+        val layoutDirection = LocalLayoutDirection.current
+        val contentPadding =
+            PaddingValues(
+                top = basePadding.calculateTopPadding() + TabBandInset,
+                bottom = basePadding.calculateBottomPadding(),
+                start = basePadding.calculateStartPadding(layoutDirection),
+                end = basePadding.calculateEndPadding(layoutDirection),
+            )
+        when (selectedTab) {
+            RulesProvidersTab.Rules ->
+                RulesScreen(
+                    contentPadding = contentPadding,
+                    scrollBehaviorOverride = scrollBehavior,
+                    listState = rulesListState,
+                )
+
+            RulesProvidersTab.Providers ->
+                ProvidersContent(
+                    contentPadding = contentPadding,
+                    scrollBehaviorOverride = scrollBehavior,
+                    listState = providersListState,
+                )
+        }
+    }
+}

@@ -1,15 +1,21 @@
 package com.github.yumeyucca.yumebox.core.locale
 
 internal val ZhHansYumeStrings_Proxy: YumeStrings_Proxy = YumeStrings_Proxy(
-    Title = "节点",
+    Title = "代理",
     Mode = YumeStrings_Proxy_Mode(
         Direct = "直连",
+    ),
+    Tab = YumeStrings_Proxy_Tab(
+        Policy = "策略组",
+        NodeGroups = "节点组",
     ),
     Action = YumeStrings_Proxy_Action(
         Panel = "面板",
         Test = "测试",
         Sort = "排序",
-        LocateCurrent = "定位当前节点",
+        Layout = "布局",
+        TabsMode = "标签页模式",
+        SearchNodes = "搜索节点",
         More = "更多",
     ),
     Node = YumeStrings_Proxy_Node(
@@ -22,7 +28,7 @@ internal val ZhHansYumeStrings_Proxy: YumeStrings_Proxy = YumeStrings_Proxy(
     ),
     Testing = YumeStrings_Proxy_Testing(
         Group = "正在测试节点组：%s",
-        All = "正在测试所有节点组...",
+        All = "正在测试所有节点组",
         RequestSent = "测试请求已发送",
         Progress = "正在测试 %d/%d",
         Completed = "测试完成",
@@ -40,6 +46,8 @@ internal val ZhHansYumeStrings_Proxy: YumeStrings_Proxy = YumeStrings_Proxy(
         ByLatency = "按延迟排序",
     ),
     DisplayMode = YumeStrings_Proxy_DisplayMode(
+        Single = "单列",
+        Double = "双列",
         SingleDetailed = "单列详细",
         SingleSimple = "单列简洁",
         DoubleDetailed = "双列详细",
@@ -48,15 +56,21 @@ internal val ZhHansYumeStrings_Proxy: YumeStrings_Proxy = YumeStrings_Proxy(
 )
 
 internal val ZhYumeStrings_Proxy: YumeStrings_Proxy = YumeStrings_Proxy(
-    Title = "節點",
+    Title = "代理",
     Mode = YumeStrings_Proxy_Mode(
         Direct = "直連",
+    ),
+    Tab = YumeStrings_Proxy_Tab(
+        Policy = "策略組",
+        NodeGroups = "節點組",
     ),
     Action = YumeStrings_Proxy_Action(
         Panel = "面板",
         Test = "測試",
         Sort = "排序",
-        LocateCurrent = "定位目前節點",
+        Layout = "佈局",
+        TabsMode = "標籤頁模式",
+        SearchNodes = "搜尋節點",
         More = "更多",
     ),
     Node = YumeStrings_Proxy_Node(
@@ -69,7 +83,7 @@ internal val ZhYumeStrings_Proxy: YumeStrings_Proxy = YumeStrings_Proxy(
     ),
     Testing = YumeStrings_Proxy_Testing(
         Group = "正在測試節點組：%s",
-        All = "正在測試所有節點組...",
+        All = "正在測試所有節點組",
         RequestSent = "測試請求已送出",
         Progress = "正在測試 %d/%d",
         Completed = "測試完成",
@@ -87,6 +101,8 @@ internal val ZhYumeStrings_Proxy: YumeStrings_Proxy = YumeStrings_Proxy(
         ByLatency = "依延遲排序",
     ),
     DisplayMode = YumeStrings_Proxy_DisplayMode(
+        Single = "單欄",
+        Double = "雙欄",
         SingleDetailed = "單欄詳細",
         SingleSimple = "單欄簡潔",
         DoubleDetailed = "雙欄詳細",
@@ -95,15 +111,21 @@ internal val ZhYumeStrings_Proxy: YumeStrings_Proxy = YumeStrings_Proxy(
 )
 
 internal val EnYumeStrings_Proxy: YumeStrings_Proxy = YumeStrings_Proxy(
-    Title = "Nodes",
+    Title = "Proxy",
     Mode = YumeStrings_Proxy_Mode(
         Direct = "Direct",
+    ),
+    Tab = YumeStrings_Proxy_Tab(
+        Policy = "Policies",
+        NodeGroups = "Nodes",
     ),
     Action = YumeStrings_Proxy_Action(
         Panel = "Panel",
         Test = "Test",
         Sort = "Sort",
-        LocateCurrent = "Locate current proxy",
+        Layout = "Layout",
+        TabsMode = "Tab mode",
+        SearchNodes = "Search nodes",
         More = "More",
     ),
     Node = YumeStrings_Proxy_Node(
@@ -116,7 +138,7 @@ internal val EnYumeStrings_Proxy: YumeStrings_Proxy = YumeStrings_Proxy(
     ),
     Testing = YumeStrings_Proxy_Testing(
         Group = "Testing node group: %s",
-        All = "Testing all node groups...",
+        All = "Testing all node groups",
         RequestSent = "Test request sent",
         Progress = "Testing %d/%d",
         Completed = "Test completed",
@@ -134,6 +156,8 @@ internal val EnYumeStrings_Proxy: YumeStrings_Proxy = YumeStrings_Proxy(
         ByLatency = "By Latency",
     ),
     DisplayMode = YumeStrings_Proxy_DisplayMode(
+        Single = "Single Column",
+        Double = "Two Columns",
         SingleDetailed = "Single Detailed",
         SingleSimple = "Single Simple",
         DoubleDetailed = "Double Detailed",
@@ -142,15 +166,21 @@ internal val EnYumeStrings_Proxy: YumeStrings_Proxy = YumeStrings_Proxy(
 )
 
 internal val JaYumeStrings_Proxy: YumeStrings_Proxy = YumeStrings_Proxy(
-    Title = "ノード",
+    Title = "プロキシ",
     Mode = YumeStrings_Proxy_Mode(
         Direct = "ダイレクト",
+    ),
+    Tab = YumeStrings_Proxy_Tab(
+        Policy = "ポリシーグループ",
+        NodeGroups = "ノードグループ",
     ),
     Action = YumeStrings_Proxy_Action(
         Panel = "パネル",
         Test = "テスト",
         Sort = "並び替え",
-        LocateCurrent = "現在のノードを表示",
+        Layout = "レイアウト",
+        TabsMode = "タブモード",
+        SearchNodes = "ノードを検索",
         More = "その他",
     ),
     Node = YumeStrings_Proxy_Node(
@@ -163,7 +193,7 @@ internal val JaYumeStrings_Proxy: YumeStrings_Proxy = YumeStrings_Proxy(
     ),
     Testing = YumeStrings_Proxy_Testing(
         Group = "ノードグループをテスト中: %s",
-        All = "すべてのノードグループをテスト中...",
+        All = "すべてのノードグループをテスト中",
         RequestSent = "テスト要求を送信しました",
         Progress = "テスト中 %d/%d",
         Completed = "テスト完了",
@@ -181,6 +211,8 @@ internal val JaYumeStrings_Proxy: YumeStrings_Proxy = YumeStrings_Proxy(
         ByLatency = "遅延順",
     ),
     DisplayMode = YumeStrings_Proxy_DisplayMode(
+        Single = "1列",
+        Double = "2列",
         SingleDetailed = "1列・詳細",
         SingleSimple = "1列・簡易",
         DoubleDetailed = "2列・詳細",
@@ -189,15 +221,21 @@ internal val JaYumeStrings_Proxy: YumeStrings_Proxy = YumeStrings_Proxy(
 )
 
 internal val RuYumeStrings_Proxy: YumeStrings_Proxy = YumeStrings_Proxy(
-    Title = "Узлы",
+    Title = "Прокси",
     Mode = YumeStrings_Proxy_Mode(
         Direct = "Напрямую",
+    ),
+    Tab = YumeStrings_Proxy_Tab(
+        Policy = "Группы политик",
+        NodeGroups = "Узлы",
     ),
     Action = YumeStrings_Proxy_Action(
         Panel = "Панель",
         Test = "Тест",
         Sort = "Сортировка",
-        LocateCurrent = "Найти текущий узел",
+        Layout = "Макет",
+        TabsMode = "Режим вкладок",
+        SearchNodes = "Поиск узлов",
         More = "Ещё",
     ),
     Node = YumeStrings_Proxy_Node(
@@ -210,7 +248,7 @@ internal val RuYumeStrings_Proxy: YumeStrings_Proxy = YumeStrings_Proxy(
     ),
     Testing = YumeStrings_Proxy_Testing(
         Group = "Тестирование группы узлов: %s",
-        All = "Тестирование всех групп узлов...",
+        All = "Тестирование всех групп узлов",
         RequestSent = "Запрос теста отправлен",
         Progress = "Тест %d/%d",
         Completed = "Тест завершён",
@@ -228,6 +266,8 @@ internal val RuYumeStrings_Proxy: YumeStrings_Proxy = YumeStrings_Proxy(
         ByLatency = "По задержке",
     ),
     DisplayMode = YumeStrings_Proxy_DisplayMode(
+        Single = "1 колонка",
+        Double = "2 колонки",
         SingleDetailed = "1 колонка, подробно",
         SingleSimple = "1 колонка, кратко",
         DoubleDetailed = "2 колонки, подробно",

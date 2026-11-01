@@ -22,7 +22,6 @@
 
 package com.github.yumeyucca.yumebox.presentation.component
 
-
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -46,21 +45,25 @@ import com.github.yumeyucca.yumebox.core.locale.YumeTxt
 
 @Composable
 fun CountryFlagCircle(countryCode: String?, modifier: Modifier = Modifier, size: Dp = UiDp.dp18) {
-    val semanticColors = AppTheme.colors
-    val flagUrl = remember(countryCode) { LocaleUtil.normalizeFlagUrl(countryCode) }
+    val flagUri = remember(countryCode) { LocaleUtil.normalizeFlagUri(countryCode) }
     val flagLabel =
         remember(countryCode) {
             countryCode?.trim()?.ifEmpty { null } ?: LocaleUtil.UNKNOWN_FLAG_CODE
         }
     val context = LocalContext.current
-    val request = remember(context, flagUrl) { ImageRequest(context, flagUrl) }
+    val request =
+        remember(context, flagUri) {
+            ImageRequest(context, flagUri) {
+                addComponents(CircleFlagFetcher.components)
+            }
+        }
 
     Box(
         modifier =
             modifier
                 .size(size)
                 .clip(CircleShape)
-                .background(semanticColors.neutralPlaceholderBackground),
+                .background(AppTheme.colors.state.neutralPlaceholderBackground),
         contentAlignment = Alignment.Center,
     ) {
         Image(

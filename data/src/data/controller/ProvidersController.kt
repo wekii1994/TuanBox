@@ -22,7 +22,9 @@ package com.github.yumeyucca.yumebox.data.controller
 
 import android.content.Context
 import android.net.Uri
+import com.github.yumeyucca.yumebox.core.locale.YumeTxt
 import com.github.yumeyucca.yumebox.core.model.Provider
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -39,10 +41,13 @@ class ProvidersController(
 ) {
     @Suppress("TooGenericExceptionCaught")
     suspend fun queryProviders(): Result<List<Provider>> =
-        try {
-            Result.success(queryProvidersAction())
-        } catch (error: Exception) { // fault barrier: injected bridge action may fail arbitrarily
-            Result.failure(error)
+        withContext(Dispatchers.IO) {
+            try {
+                Result.success(queryProvidersAction())
+            } catch (error: Exception) { // fault barrier: injected bridge action may fail arbitrarily
+                if (error is CancellationException) throw error
+                Result.failure(error)
+            }
         }
 
     suspend fun updateProvider(provider: Provider): Result<Unit> =
@@ -63,7 +68,6 @@ class ProvidersController(
 
     @Suppress("TooGenericExceptionCaught")
     suspend fun uploadProviderFile(
-        context: Context,
         provider: Provider,
         uri: Uri,
         maxBytes: Long = MAX_UPLOAD_SIZE_BYTES,
@@ -80,11 +84,10 @@ class ProvidersController(
                 }
 
                 Result.success(Unit)
-            } catch (
-                error:
-                Exception
-            ) { // fault barrier: IO and path-validation failures both become
-                // Result.failure
+            } catch (error: CancellationException) {
+                throw error
+            } catch (@Suppress("TooGenericExceptionCaught") error: Exception) {
+                // Fault barrier: IO and path-validation failures both become Result.failure.
                 Result.failure(error)
             }
         }
@@ -96,6 +99,7 @@ class ProvidersController(
             updateProviderAction(type, name)
             Result.success(Unit)
         } catch (error: Exception) { // fault barrier: injected update action may fail arbitrarily
+            if (error is CancellationException) throw error
             Result.failure(error)
         }
 
@@ -112,7 +116,7 @@ class ProvidersController(
                     if (read < 0) break
                     written += read.toLong()
                     check(written <= maxBytes) {
-                        "文件超过 ${maxBytes / (1024 * 1024)}MB 限制"
+                        YumeTxt.Override.Import.TooLarge.format(maxBytes / (1024 * 1024))
                     }
                     output.write(buffer, 0, read)
                 }

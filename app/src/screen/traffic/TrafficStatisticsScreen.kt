@@ -18,7 +18,7 @@
  *
  */
 
-@file:Suppress("FunctionName", "UnusedVariable")
+@file:Suppress("FunctionName")
 
 package com.github.yumeyucca.yumebox.screen.traffic
 
@@ -27,6 +27,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -36,35 +37,33 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.github.yumeyucca.yumebox.common.util.formatBytes
-import com.github.yumeyucca.yumebox.screen.connection.ConnectionDetailHolder
+import com.github.yumeyucca.yumebox.common.util.ByteFormatter
 import com.github.yumeyucca.yumebox.common.util.toast
 import com.github.yumeyucca.yumebox.data.model.StatisticsTimeRange
-import com.github.yumeyucca.yumebox.feature.meta.presentation.component.TabRowWithContour
 import com.github.yumeyucca.yumebox.feature.meta.presentation.viewmodel.RecentRequestRecord
 import com.github.yumeyucca.yumebox.feature.meta.presentation.viewmodel.TargetSiteRecord
+import com.github.yumeyucca.yumebox.feature.meta.presentation.viewmodel.TrafficStatisticsUiState
 import com.github.yumeyucca.yumebox.feature.meta.presentation.viewmodel.TrafficStatisticsViewModel
 import com.github.yumeyucca.yumebox.feature.meta.presentation.viewmodel.extractDisplayDestination
 import com.github.yumeyucca.yumebox.presentation.component.*
-import com.github.yumeyucca.yumebox.presentation.component.AppCard
+import com.github.yumeyucca.yumebox.presentation.navigation.LocalNavigator
+import com.github.yumeyucca.yumebox.presentation.navigation.Navigator
 import com.github.yumeyucca.yumebox.presentation.navigation.Route
 import com.github.yumeyucca.yumebox.presentation.theme.AppTheme
 import com.github.yumeyucca.yumebox.presentation.theme.UiDp
+import com.github.yumeyucca.yumebox.screen.connection.ConnectionDetailHolder
 import org.koin.androidx.compose.koinViewModel
 import com.github.yumeyucca.yumebox.core.locale.YumeTxt
-import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonPrimitive
+import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
-import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Delete
@@ -93,14 +92,11 @@ fun TrafficStatisticsScreen(navigator: Navigator = LocalNavigator.current) {
     val selectedRangeIndex = timeRanges.indexOf(uiState.selectedTimeRange).coerceAtLeast(0)
     val isToday = uiState.selectedTimeRange == StatisticsTimeRange.TODAY
 
-    Scaffold(
+    GlassScaffold(
         topBar = {
             TopBar(
                 title = YumeTxt.TrafficStatistics.Title,
                 scrollBehavior = scrollBehavior,
-                navigationIcon = {
-                    NavigationBackIcon(navigator = navigator)
-                },
                 actions = {
                     IconButton(
                         onClick = {
@@ -109,68 +105,49 @@ fun TrafficStatisticsScreen(navigator: Navigator = LocalNavigator.current) {
                         }
                     ) {
                         Icon(
-                            imageVector = MiuixIcons.Delete,
-                            contentDescription = YumeTxt.TrafficStatistics.Action.Clear,
+                            imageVector = MiuixIcons.extended.Delete,
+                            contentDescription = "清空统计数据",
                             tint = MiuixTheme.colorScheme.onSurface,
                         )
                     }
-                },
+                }
             )
         }
     ) { innerPadding ->
-        val mainLikePadding = rememberStandalonePageMainPadding()
-        val isWideLayout = LocalConfiguration.current.screenWidthDp >= 700
-        ScreenLazyColumn(
+        StandalonePageList(
             scrollBehavior = scrollBehavior,
-            innerPadding = combinePaddingValues(innerPadding, mainLikePadding),
+            scaffoldPadding = innerPadding,
         ) {
-            if (isWideLayout) {
-                item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = spacing.space16),
-                        horizontalArrangement = Arrangement.spacedBy(spacing.space16),
-                        verticalAlignment = Alignment.Top,
-                    ) {
-                        OverviewSectionCard(
-                            modifier = Modifier.weight(1f),
-                            uiState = uiState,
-                            selectedRangeIndex = selectedRangeIndex,
-                            timeRanges = timeRanges,
-                            isToday = isToday,
-                            onSelectRange = { range -> viewModel.setTimeRange(range) },
-                            onSelectBar = { index -> viewModel.selectBar(index) },
-                        )
-                        DetailsSectionCard(
-                            modifier = Modifier.weight(1f),
-                            uiState = uiState,
-                            navigator = navigator,
-                            selectedSection = selectedDetailSection,
-                            onSectionChange = { selectedDetailSection = it },
-                        )
-                    }
-                }
-            } else {
-                item {
-                    OverviewSectionCard(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = spacing.space16),
-                        uiState = uiState,
-                        selectedRangeIndex = selectedRangeIndex,
-                        timeRanges = timeRanges,
-                        isToday = isToday,
-                        onSelectRange = { range -> viewModel.setTimeRange(range) },
-                        onSelectBar = { index -> viewModel.selectBar(index) },
-                    )
-                }
-                item {
-                    Spacer(modifier = Modifier.height(spacing.space16))
-                    DetailsSectionCard(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = spacing.space16),
-                        uiState = uiState,
-                        navigator = navigator,
-                        selectedSection = selectedDetailSection,
-                        onSectionChange = { selectedDetailSection = it },
-                    )
-                }
+            stickySegmentedTabs(
+                key = "__time_range_tabs__",
+                tabs = timeRanges.map { it.label },
+                selectedTabIndex = selectedRangeIndex,
+                onTabSelected = { index ->
+                    timeRanges.getOrNull(index)?.let(viewModel::setTimeRange)
+                },
+                tabRowPadding = spacing.screenHorizontal,
+            )
+
+            item(key = "overview_card") {
+                Spacer(modifier = Modifier.height(spacing.space12))
+                OverviewSectionCard(
+                    uiState = uiState,
+                    isToday = isToday,
+                )
+            }
+
+            item(key = "details_card") {
+                Spacer(modifier = Modifier.height(spacing.space12))
+                DetailsSectionCard(
+                    uiState = uiState,
+                    selectedSection = selectedDetailSection,
+                    onSectionSelect = { selectedDetailSection = it },
+                    navigator = navigator,
+                )
+            }
+
+            item(key = "bottom_spacer") {
+                Spacer(modifier = Modifier.height(spacing.space24))
             }
         }
     }
@@ -178,173 +155,191 @@ fun TrafficStatisticsScreen(navigator: Navigator = LocalNavigator.current) {
 
 @Composable
 private fun OverviewSectionCard(
-    modifier: Modifier = Modifier,
-    uiState: com.github.yumeyucca.yumebox.feature.meta.presentation.viewmodel.TrafficStatisticsUiState,
-    selectedRangeIndex: Int,
-    timeRanges: List<StatisticsTimeRange>,
+    uiState: TrafficStatisticsUiState,
     isToday: Boolean,
-    onSelectRange: (StatisticsTimeRange) -> Unit,
-    onSelectBar: (Int) -> Unit,
 ) {
     val spacing = AppTheme.spacing
     val componentSizes = AppTheme.sizes
-    val activeSummary = uiState.summary
+    val radii = AppTheme.radii
 
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(spacing.space12)) {
-        TabRowWithContour(
-            tabs = timeRanges.map { it.label },
-            selectedTabIndex = selectedRangeIndex,
-            onTabSelected = { index ->
-                timeRanges.getOrNull(index)?.let(onSelectRange)
-            },
-            modifier = Modifier.fillMaxWidth(),
-        )
+    AppCard(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(spacing.space16),
+            verticalArrangement = Arrangement.spacedBy(spacing.space16),
+        ) {
+            // Upload & Download Summary
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(spacing.space4)) {
+                    Text(
+                        text = if (isToday) "今日上传" else "本周上传",
+                        style = MiuixTheme.textStyles.footnote1,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    )
+                    Text(
+                        text = ByteFormatter.format(uiState.summary.totalUpload),
+                        style = MiuixTheme.textStyles.title2,
+                        fontWeight = FontWeight.Bold,
+                        color = MiuixTheme.colorScheme.onSurface,
+                    )
+                }
 
-        AppCard(insideMargin = PaddingValues(spacing.space16)) {
-            Column(verticalArrangement = Arrangement.spacedBy(spacing.space16)) {
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(spacing.space4),
+                ) {
+                    Text(
+                        text = if (isToday) "今日下载" else "本周下载",
+                        style = MiuixTheme.textStyles.footnote1,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    )
+                    Text(
+                        text = ByteFormatter.format(uiState.summary.totalDownload),
+                        style = MiuixTheme.textStyles.title2,
+                        fontWeight = FontWeight.Bold,
+                        color = MiuixTheme.colorScheme.primary,
+                    )
+                }
+            }
+
+            HorizontalDivider(
+                thickness = componentSizes.thinDividerThickness,
+                color = MiuixTheme.colorScheme.outline.copy(alpha = AppTheme.opacity.outline),
+            )
+
+            // Dynamic Context Bar
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 if (isToday) {
-                    Column(verticalArrangement = Arrangement.spacedBy(spacing.space6)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text = formatBytes(activeSummary.total),
-                                style = MiuixTheme.textStyles.title2,
-                                color = MiuixTheme.colorScheme.onSurface,
-                                fontWeight = FontWeight.Bold,
-                            )
-                            if (uiState.todayTimeContext.isNotBlank()) {
-                                SmallBadge(text = uiState.todayTimeContext, isPrimary = false)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(spacing.space8),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = "今日累计 · ${ByteFormatter.format(uiState.todayTotal)}",
+                            style = MiuixTheme.textStyles.body2,
+                            fontWeight = FontWeight.Medium,
+                            color = MiuixTheme.colorScheme.onSurface,
+                        )
+                        if (uiState.yesterdayTotal > 0L) {
+                            val diffText = if (uiState.trafficDifference >= 0) {
+                                "+${ByteFormatter.format(uiState.trafficDifference)}"
+                            } else {
+                                "-${ByteFormatter.format(abs(uiState.trafficDifference))}"
                             }
-                        }
-
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(spacing.space12),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
                             Text(
-                                text = "↓ ${formatBytes(activeSummary.totalDownload)}  ·  ↑ ${formatBytes(activeSummary.totalUpload)}",
+                                text = "较昨日 $diffText",
                                 style = MiuixTheme.textStyles.footnote1,
-                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                color = if (uiState.trafficDifference > 0) {
+                                    MiuixTheme.colorScheme.primary
+                                } else {
+                                    MiuixTheme.colorScheme.onSurfaceVariantSummary
+                                },
                             )
-                            if (uiState.yesterdayTotal > 0L) {
-                                val diff = uiState.trafficDifference
-                                val diffText = if (diff >= 0L) "+${formatBytes(diff)}" else "-${formatBytes(abs(diff))}"
-                                Text(
-                                    text = "较昨日 $diffText",
-                                    style = MiuixTheme.textStyles.footnote1,
-                                    color = if (diff > 0L) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                                )
-                            }
                         }
                     }
                 } else {
-                    Column(verticalArrangement = Arrangement.spacedBy(spacing.space6)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         Text(
-                            text = formatBytes(activeSummary.total),
-                            style = MiuixTheme.textStyles.title2,
+                            text = "本周累计 · ${ByteFormatter.format(uiState.weekTotal)}",
+                            style = MiuixTheme.textStyles.body2,
+                            fontWeight = FontWeight.Medium,
                             color = MiuixTheme.colorScheme.onSurface,
-                            fontWeight = FontWeight.Bold,
                         )
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(spacing.space12),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
+                        if (uiState.chartAverage > 0L) {
                             Text(
-                                text = "↓ ${formatBytes(activeSummary.totalDownload)}  ·  ↑ ${formatBytes(activeSummary.totalUpload)}",
+                                text = "日均 ${ByteFormatter.format(uiState.chartAverage)}",
                                 style = MiuixTheme.textStyles.footnote1,
-                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                color = MiuixTheme.colorScheme.primary,
                             )
-                            if (uiState.chartAverage > 0L) {
-                                Text(
-                                    text = "日均 ${formatBytes(uiState.chartAverage)}",
-                                    style = MiuixTheme.textStyles.footnote1,
-                                    color = MiuixTheme.colorScheme.primary,
-                                )
-                            }
                         }
                     }
                 }
-
-                TrafficBarChart(
-                    items = uiState.chartBars,
-                    animationKey = uiState.selectedTimeRange,
-                    averageValue = uiState.chartAverage.takeIf { !isToday && it > 0L },
-                    averageLabel = YumeTxt.TrafficStatistics.Summary.Average.takeIf { !isToday && uiState.chartAverage > 0L },
-                    showSelectionTip = !isToday,
-                    selectedIndex = if (isToday) -1 else uiState.selectedBarIndex,
-                    onItemClick = { index -> if (!isToday) onSelectBar(index) },
-                    tipTitleFor = { bar ->
-                        YumeTxt.TrafficStatistics.Summary.DayTrafficTip.format(bar.label)
-                    },
-                    chartHeight = if (isToday) componentSizes.trafficChartHeight else componentSizes.trafficBarChartHeight,
-                    barWidth = if (isToday) UiDp.dp8 else componentSizes.trafficBarWidth,
-                )
             }
+
+            // Chart
+            TrafficBarChart(
+                items = uiState.chartBars,
+                animationKey = uiState.selectedTimeRange,
+                averageValue = uiState.chartAverage.takeIf { !isToday && it > 0L },
+                averageLabel = YumeTxt.TrafficStatistics.Summary.Average.takeIf { !isToday && uiState.chartAverage > 0L },
+                showSelectionTip = !isToday,
+                tipTitleFor = { bar ->
+                    YumeTxt.TrafficStatistics.Summary.DayTrafficTip.format(bar.label)
+                },
+                chartHeight = if (isToday) componentSizes.trafficChartHeight else componentSizes.trafficBarChartHeight,
+                barWidth = if (isToday) UiDp.dp8 else componentSizes.trafficBarWidth,
+            )
         }
     }
 }
 
 @Composable
 private fun DetailsSectionCard(
-    modifier: Modifier = Modifier,
-    uiState: com.github.yumeyucca.yumebox.feature.meta.presentation.viewmodel.TrafficStatisticsUiState,
-    navigator: Navigator,
+    uiState: TrafficStatisticsUiState,
     selectedSection: TrafficDetailSection,
-    onSectionChange: (TrafficDetailSection) -> Unit,
+    onSectionSelect: (TrafficDetailSection) -> Unit,
+    navigator: Navigator,
 ) {
     val spacing = AppTheme.spacing
+    val componentSizes = AppTheme.sizes
 
-    AppCard(modifier = modifier, insideMargin = PaddingValues(spacing.space16)) {
-        Column(verticalArrangement = Arrangement.spacedBy(spacing.space16)) {
-            // Header Row: Section switcher tab + count badge
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TabRowWithContour(
-                    tabs = TrafficDetailSection.entries.map { it.title },
-                    selectedTabIndex = selectedSection.ordinal,
-                    onTabSelected = { index ->
-                        TrafficDetailSection.entries.getOrNull(index)?.let(onSectionChange)
-                    },
-                    modifier = Modifier.weight(1f, fill = false),
-                )
-
-                val countText = when (selectedSection) {
-                    TrafficDetailSection.RECENT_REQUESTS -> "${uiState.recentRequests.size} 条"
-                    TrafficDetailSection.TARGET_SITES -> "${uiState.targetSites.size} 个"
-                }
-                SmallBadge(text = countText, isPrimary = false)
-            }
+    AppCard(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            SegmentedTabRow(
+                tabs = TrafficDetailSection.entries.map { it.title },
+                selectedTabIndex = selectedSection.ordinal,
+                onTabSelected = { index ->
+                    TrafficDetailSection.entries.getOrNull(index)?.let(onSectionSelect)
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = spacing.space16, vertical = spacing.space12),
+            )
 
             AnimatedContent(
                 targetState = selectedSection,
                 transitionSpec = {
-                    fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(180))
+                    fadeIn(animationSpec = tween(200)) togetherWith fadeOut(animationSpec = tween(200))
                 },
-                label = "traffic_detail_switch",
-            ) { target ->
-                when (target) {
+                label = "DetailsSectionContent",
+            ) { section ->
+                when (section) {
                     TrafficDetailSection.RECENT_REQUESTS -> {
                         if (uiState.recentRequests.isEmpty()) {
-                            EmptyDetailNotice("暂无实时请求记录，开启代理后产生流量将自动捕获")
+                            EmptyDetailNotice(message = "暂无网络请求记录")
                         } else {
-                            Column(verticalArrangement = Arrangement.spacedBy(spacing.space10)) {
-                                uiState.recentRequests.forEach { request ->
-                                    key(request.connection.id) {
-                                        RecentRequestItemCard(
-                                            record = request,
-                                            onClick = {
-                                                ConnectionDetailHolder.setup(
-                                                    info = request.connection,
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                uiState.recentRequests.forEachIndexed { index, request ->
+                                    RecentRequestItemCard(
+                                        record = request,
+                                        onClick = {
+                                            ConnectionDetailHolder.setup(request.connection)
+                                            navigator.push(
+                                                Route.ConnectionDetail(
+                                                    connectionId = request.connection.id,
                                                     canInterrupt = request.isActive,
                                                 )
-                                                navigator.push(Route.ConnectionDetail(request.connection.id))
-                                            },
+                                            )
+                                        },
+                                    )
+                                    if (index < uiState.recentRequests.lastIndex) {
+                                        HorizontalDivider(
+                                            modifier = Modifier.padding(start = UiDp.dp64, end = spacing.space16),
+                                            thickness = componentSizes.thinDividerThickness,
+                                            color = MiuixTheme.colorScheme.outline.copy(alpha = AppTheme.opacity.outline),
                                         )
                                     }
                                 }
@@ -354,18 +349,21 @@ private fun DetailsSectionCard(
 
                     TrafficDetailSection.TARGET_SITES -> {
                         if (uiState.targetSites.isEmpty()) {
-                            EmptyDetailNotice("暂无目标站点统计，开启代理后产生流量将自动聚合")
+                            EmptyDetailNotice(message = "暂无目标站点统计")
                         } else {
-                            val maxBytes = remember(uiState.targetSites) {
-                                uiState.targetSites.maxOfOrNull(TargetSiteRecord::totalBytes)?.coerceAtLeast(1L) ?: 1L
-                            }
-                            Column(verticalArrangement = Arrangement.spacedBy(spacing.space10)) {
+                            val maxBytes = uiState.targetSites.firstOrNull()?.totalBytes?.coerceAtLeast(1L) ?: 1L
+                            Column(modifier = Modifier.fillMaxWidth()) {
                                 uiState.targetSites.forEachIndexed { index, site ->
-                                    key(site.siteKey) {
-                                        TargetSiteItemCard(
-                                            record = site,
-                                            rank = index + 1,
-                                            maxBytes = maxBytes,
+                                    TargetSiteItemCard(
+                                        record = site,
+                                        rank = index + 1,
+                                        maxBytes = maxBytes,
+                                    )
+                                    if (index < uiState.targetSites.lastIndex) {
+                                        HorizontalDivider(
+                                            modifier = Modifier.padding(start = UiDp.dp48, end = spacing.space16),
+                                            thickness = componentSizes.thinDividerThickness,
+                                            color = MiuixTheme.colorScheme.outline.copy(alpha = AppTheme.opacity.outline),
                                         )
                                     }
                                 }
@@ -384,163 +382,87 @@ private fun RecentRequestItemCard(
     onClick: () -> Unit,
 ) {
     val spacing = AppTheme.spacing
-    val radii = AppTheme.radii
-    val colors = AppTheme.colors
     val connection = record.connection
     val effectiveHost = remember(record.displayHost, connection) {
         record.displayHost.ifBlank { connection.extractDisplayDestination() }
     }
-    val totalTraffic = connection.upload + connection.download
-    val network = remember(connection.metadata) {
-        connection.metadata["network"]?.jsonPrimitive?.contentOrNull?.uppercase() ?: "TCP"
-    }
-    val protocolColor = when (network) {
-        "TCP" -> colors.protocol.tcp
-        "UDP" -> colors.protocol.udp
-        "HTTP" -> colors.protocol.http
-        "HTTPS" -> colors.protocol.https
-        else -> colors.protocol.unknown
+    val timeText = remember(record.startMillis) {
+        formatMillisTime(record.startMillis)
     }
 
-    val subtitle = when {
-        record.sourceAppName != null && record.serviceTag != null -> "${record.sourceAppName} · ${record.serviceTag}"
-        record.sourceAppName != null -> record.sourceAppName
-        record.serviceTag != null -> record.serviceTag
-        else -> record.subDetail
-    }
-
-    Box(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(radii.radius16))
-            .background(MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
             .clickable(onClick = onClick)
             .padding(horizontal = spacing.space16, vertical = spacing.space12),
+        horizontalArrangement = Arrangement.spacedBy(spacing.space12),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(spacing.space8)) {
-            // Row 1 & 2: Host + Subtitle on Left, Traffic Breakdown on Right
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top,
-            ) {
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(spacing.space2),
-                ) {
-                    Text(
-                        text = effectiveHost,
-                        style = MiuixTheme.textStyles.body2,
-                        color = MiuixTheme.colorScheme.onSurface,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    if (!subtitle.isNullOrBlank()) {
-                        Text(
-                            text = subtitle,
-                            style = MiuixTheme.textStyles.footnote1,
-                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
+        AppIconBadge(
+            packageName = connection.metadata["process"]?.toString()?.trim('"'),
+            appName = record.sourceAppName ?: effectiveHost,
+        )
 
-                Spacer(modifier = Modifier.width(spacing.space12))
-
-                Column(
-                    horizontalAlignment = Alignment.End,
-                    verticalArrangement = Arrangement.spacedBy(spacing.space2),
-                ) {
-                    Text(
-                        text = formatBytes(totalTraffic),
-                        style = MiuixTheme.textStyles.body2,
-                        color = MiuixTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(spacing.space4),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = "↑ ${formatBytes(connection.upload)}",
-                            style = MiuixTheme.textStyles.footnote1.copy(fontSize = 11.sp),
-                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        )
-                        Text(
-                            text = "↓ ${formatBytes(connection.download)}",
-                            style = MiuixTheme.textStyles.footnote1.copy(fontSize = 11.sp),
-                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        )
-                    }
-                }
-            }
-
-            // Row 3: Harmonized Bottom Row
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(spacing.space4),
+        ) {
+            // Host and time
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(
-                    modifier = Modifier.weight(1f, fill = false),
-                    horizontalArrangement = Arrangement.spacedBy(spacing.space6),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    // Unified Status & Protocol Chip
-                    StatusProtocolBadge(
-                        isActive = record.isActive,
-                        network = network,
-                        protocolColor = protocolColor,
-                    )
-
-                    // Exit Node & Rule Chip
-                    val routeRuleText = "${record.exitNode} · ${record.ruleLabel}"
-                    SmallBadge(text = routeRuleText, isPrimary = false)
-                }
-
                 Text(
-                    text = formatMillisTime(record.startMillis),
+                    text = effectiveHost,
+                    style = MiuixTheme.textStyles.body1,
+                    fontWeight = FontWeight.Medium,
+                    color = MiuixTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                Text(
+                    text = timeText,
+                    style = MiuixTheme.textStyles.footnote1,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                )
+            }
+
+            // SubDetail or App Name
+            if (record.subDetail != null || record.sourceAppName != null) {
+                val detail = record.subDetail ?: record.sourceAppName.orEmpty()
+                Text(
+                    text = detail,
                     style = MiuixTheme.textStyles.footnote1.copy(fontSize = 11.sp),
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    modifier = Modifier.padding(start = spacing.space4),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+
+            // Metadata badges row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(spacing.space6),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (record.serviceTag != null) {
+                    SmallBadge(text = record.serviceTag, isPrimary = true)
+                }
+                SmallBadge(text = record.exitNode, isPrimary = false)
+                SmallBadge(text = record.ruleLabel, isPrimary = false)
+
+                Spacer(modifier = Modifier.weight(1f))
+
+                // Upload / Download bytes
+                Text(
+                    text = "↑ ${ByteFormatter.format(connection.upload)}  ↓ ${ByteFormatter.format(connection.download)}",
+                    style = MiuixTheme.textStyles.footnote1.copy(fontSize = 11.sp),
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun StatusProtocolBadge(
-    isActive: Boolean,
-    network: String,
-    protocolColor: Color,
-) {
-    val radii = AppTheme.radii
-    val colors = AppTheme.colors
-    val dotColor = if (isActive) colors.connection.chainActive else MiuixTheme.colorScheme.outline.copy(alpha = 0.5f)
-
-    Row(
-        modifier = Modifier
-            .clip(RoundedCornerShape(radii.radius8))
-            .background(protocolColor.copy(alpha = 0.12f))
-            .padding(horizontal = 6.dp, vertical = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .size(6.dp)
-                .clip(RoundedCornerShape(radii.full))
-                .background(dotColor),
-        )
-        Text(
-            text = network,
-            style = MiuixTheme.textStyles.footnote1.copy(fontSize = 10.sp),
-            fontWeight = FontWeight.SemiBold,
-            color = protocolColor,
-        )
     }
 }
 
@@ -552,78 +474,68 @@ private fun TargetSiteItemCard(
 ) {
     val spacing = AppTheme.spacing
     val radii = AppTheme.radii
-    val serviceTag = record.serviceTag
-    val connCount = record.connectionCount
-    val timeText = formatMillisTime(record.lastSeenAt)
-    val progress = (record.totalBytes.toFloat() / maxBytes.toFloat()).coerceIn(0f, 1f)
-    val isDirectIp = record.isIp
+    val progress = (record.totalBytes.toFloat() / maxBytes.toFloat()).coerceIn(0.02f, 1f)
+    val timeText = remember(record.lastSeenAt) {
+        formatMillisTime(record.lastSeenAt)
+    }
 
-    Box(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(radii.radius16))
-            .background(MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
             .padding(horizontal = spacing.space16, vertical = spacing.space12),
+        horizontalArrangement = Arrangement.spacedBy(spacing.space12),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(spacing.space8)) {
-            // Row 1: Rank / IP Icon + Name + Service Tag + Total Traffic
+        if (record.isIp) {
+            IpBadge()
+        } else {
+            RankBadge(rank = rank)
+        }
+
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(spacing.space4),
+        ) {
+            // Site name and Primary Domain
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(
-                    modifier = Modifier.weight(1f),
-                    horizontalArrangement = Arrangement.spacedBy(spacing.space8),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    if (isDirectIp) {
-                        IpBadge()
-                    } else {
-                        RankBadge(rank = rank)
-                    }
-
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(spacing.space2),
-                    ) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(spacing.space6),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text = record.displayName,
-                                style = MiuixTheme.textStyles.body2,
-                                color = MiuixTheme.colorScheme.onSurface,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f, fill = false),
-                            )
-                            if (!serviceTag.isNullOrBlank()) {
-                                SmallBadge(text = serviceTag, isPrimary = !isDirectIp)
-                            }
-                        }
-                        if (record.primaryDomain.isNotBlank() && record.primaryDomain != record.displayName) {
-                            Text(
-                                text = record.primaryDomain,
-                                style = MiuixTheme.textStyles.footnote1.copy(fontSize = 11.sp),
-                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.width(spacing.space12))
-
                 Text(
-                    text = formatBytes(record.totalBytes),
-                    style = MiuixTheme.textStyles.body2,
-                    color = if (isDirectIp) MiuixTheme.colorScheme.onSurface else MiuixTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold,
+                    text = record.displayName,
+                    style = MiuixTheme.textStyles.body1,
+                    fontWeight = FontWeight.Medium,
+                    color = MiuixTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
                 )
+                Text(
+                    text = ByteFormatter.format(record.totalBytes),
+                    style = MiuixTheme.textStyles.footnote1,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MiuixTheme.colorScheme.onSurface,
+                )
+            }
+
+            // Primary Domain and Tag
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(spacing.space6),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = record.primaryDomain,
+                    style = MiuixTheme.textStyles.footnote1.copy(fontSize = 11.sp),
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (record.serviceTag != null) {
+                    SmallBadge(text = record.serviceTag, isPrimary = true)
+                }
             }
 
             // Progress bar
@@ -632,44 +544,30 @@ private fun TargetSiteItemCard(
                     .fillMaxWidth()
                     .height(UiDp.dp4)
                     .clip(RoundedCornerShape(radii.full))
-                    .background(MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f)),
+                    .background(MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f))
             ) {
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth(progress.coerceAtLeast(0.02f))
+                        .fillMaxWidth(progress)
                         .height(UiDp.dp4)
                         .clip(RoundedCornerShape(radii.full))
-                        .background(
-                            if (isDirectIp) MiuixTheme.colorScheme.onSurfaceVariantSummary.copy(alpha = 0.6f)
-                            else MiuixTheme.colorScheme.primary
-                        ),
+                        .background(MiuixTheme.colorScheme.primary)
                 )
             }
 
-            // Row 3: Upload/Download breakdown + Connection count + Time
+            // Breakdown and Stats
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(spacing.space8),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = "↑ ${formatBytes(record.totalUpload)}",
-                        style = MiuixTheme.textStyles.footnote1.copy(fontSize = 11.sp),
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    )
-                    Text(
-                        text = "↓ ${formatBytes(record.totalDownload)}",
-                        style = MiuixTheme.textStyles.footnote1.copy(fontSize = 11.sp),
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    )
-                }
-
                 Text(
-                    text = "$connCount 次请求 · $timeText",
+                    text = "↑ ${ByteFormatter.format(record.totalUpload)}  ↓ ${ByteFormatter.format(record.totalDownload)}",
+                    style = MiuixTheme.textStyles.footnote1.copy(fontSize = 11.sp),
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                )
+                Text(
+                    text = "${record.connectionCount} 次请求 · $timeText",
                     style = MiuixTheme.textStyles.footnote1.copy(fontSize = 11.sp),
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
@@ -683,9 +581,9 @@ private fun IpBadge() {
     val radii = AppTheme.radii
     Box(
         modifier = Modifier
-            .size(22.dp)
+            .size(24.dp)
             .clip(RoundedCornerShape(radii.radius8))
-            .background(MiuixTheme.colorScheme.surface.copy(alpha = 0.8f)),
+            .background(MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f)),
         contentAlignment = Alignment.Center,
     ) {
         Text(
@@ -704,7 +602,7 @@ private fun RankBadge(rank: Int) {
     val bgColor = if (isTop3) {
         MiuixTheme.colorScheme.primary.copy(alpha = 0.15f)
     } else {
-        MiuixTheme.colorScheme.surface.copy(alpha = 0.6f)
+        MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
     }
     val textColor = if (isTop3) {
         MiuixTheme.colorScheme.primary
@@ -714,7 +612,7 @@ private fun RankBadge(rank: Int) {
 
     Box(
         modifier = Modifier
-            .size(22.dp)
+            .size(24.dp)
             .clip(RoundedCornerShape(radii.radius8))
             .background(bgColor),
         contentAlignment = Alignment.Center,
@@ -731,8 +629,16 @@ private fun RankBadge(rank: Int) {
 @Composable
 private fun SmallBadge(text: String, isPrimary: Boolean) {
     val radii = AppTheme.radii
-    val bgColor = if (isPrimary) MiuixTheme.colorScheme.primary.copy(alpha = 0.12f) else MiuixTheme.colorScheme.surface.copy(alpha = 0.6f)
-    val textColor = if (isPrimary) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurfaceVariantSummary
+    val bgColor = if (isPrimary) {
+        MiuixTheme.colorScheme.primary.copy(alpha = 0.12f)
+    } else {
+        MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
+    }
+    val textColor = if (isPrimary) {
+        MiuixTheme.colorScheme.primary
+    } else {
+        MiuixTheme.colorScheme.onSurfaceVariantSummary
+    }
 
     Text(
         text = text,
@@ -760,6 +666,41 @@ private fun EmptyDetailNotice(message: String) {
             text = message,
             style = MiuixTheme.textStyles.body2,
             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+        )
+    }
+}
+
+@Composable
+private fun AppIconBadge(packageName: String?, appName: String) {
+    val componentSizes = AppTheme.sizes
+    val opacity = AppTheme.opacity
+    val radii = AppTheme.radii
+
+    val iconPx = with(LocalDensity.current) { componentSizes.iconBadgeMedium.roundToPx() }
+    val bitmap = rememberAppIconBitmap(packageName, iconPx)
+    if (bitmap != null) {
+        Image(
+            bitmap = bitmap,
+            contentDescription = appName,
+            modifier = Modifier
+                .size(componentSizes.iconBadgeMedium)
+                .clip(RoundedCornerShape(radii.radius12)),
+        )
+        return
+    }
+
+    Box(
+        modifier = Modifier
+            .size(componentSizes.iconBadgeMedium)
+            .clip(RoundedCornerShape(radii.radius12))
+            .background(MiuixTheme.colorScheme.primary.copy(alpha = opacity.subtleStrong)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = appName.take(1).ifBlank { "?" },
+            style = MiuixTheme.textStyles.body1,
+            color = MiuixTheme.colorScheme.primary,
+            fontWeight = FontWeight.Bold,
         )
     }
 }

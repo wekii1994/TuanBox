@@ -18,505 +18,536 @@
  *
  */
 
-@file:Suppress("DuplicatedCode", "FunctionName", "UnnecessaryVariable")
+@file:Suppress("FunctionName")
 
 package com.github.yumeyucca.yumebox.presentation.screen
 
-import androidx.activity.compose.BackHandler
-import androidx.compose.animation.*
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.grid.LazyGridState
-import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.pager.PagerState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
+import com.github.yumeyucca.yumebox.core.locale.YumeTxt
 import com.github.yumeyucca.yumebox.data.model.ProxySortMode
 import com.github.yumeyucca.yumebox.domain.model.ProxyGroupInfo
-import com.github.yumeyucca.yumebox.presentation.component.*
-import com.github.yumeyucca.yumebox.presentation.icon.Yume
-import com.github.yumeyucca.yumebox.presentation.icon.yume.Folders
+import com.github.yumeyucca.yumebox.presentation.component.GlassScaffold
+import com.github.yumeyucca.yumebox.presentation.component.LocalDetailNavigator
+import com.github.yumeyucca.yumebox.presentation.screen.node.NodeActionsMenu
+import com.github.yumeyucca.yumebox.presentation.screen.node.NodeLayoutActions
+import com.github.yumeyucca.yumebox.presentation.screen.node.NodeMenuActions
+import com.github.yumeyucca.yumebox.presentation.screen.node.NodeSearchActions
 import com.github.yumeyucca.yumebox.presentation.screen.node.ProvideProxyDelayFlows
-import com.github.yumeyucca.yumebox.presentation.screen.node.nodeGroupItems
-import com.github.yumeyucca.yumebox.presentation.theme.*
+import com.github.yumeyucca.yumebox.presentation.theme.AnimationSpecs
+import com.github.yumeyucca.yumebox.presentation.theme.UiDp
+import com.github.yumeyucca.yumebox.presentation.util.rememberSavedGridState
+import com.github.yumeyucca.yumebox.presentation.util.rememberSavedListState
 import com.github.yumeyucca.yumebox.presentation.viewmodel.ProxyViewModel
-import dev.chrisbanes.haze.hazeSource
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 import org.koin.androidx.compose.koinViewModel
-import com.github.yumeyucca.yumebox.core.locale.YumeTxt
-import top.yukonga.miuix.kmp.basic.*
-import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.extended.Back
+import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
+import top.yukonga.miuix.kmp.basic.ScrollBehavior
+import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-private data class ProxyScreenVmState(
-    val proxyGroups: List<ProxyGroupInfo>,
-    val testingProxyNames: Set<String>,
-    val sortMode: ProxySortMode,
-    val uiSelectedGroupName: String?,
-)
-
-@Composable
-private fun rememberProxyScreenVmState(proxyViewModel: ProxyViewModel): ProxyScreenVmState {
-    val proxyGroups by proxyViewModel.sortedProxyGroups.collectAsState()
-    val testingProxyNames by proxyViewModel.testingProxyNames.collectAsState()
-    val sortMode by proxyViewModel.sortMode.collectAsState()
-    val uiSelectedGroupName by proxyViewModel.uiSelectedGroupName.collectAsState()
-    return remember(
-        proxyGroups,
-        testingProxyNames,
-        sortMode,
-        uiSelectedGroupName,
-    ) {
-        ProxyScreenVmState(
-            proxyGroups = proxyGroups,
-            testingProxyNames = testingProxyNames,
-            sortMode = sortMode,
-            uiSelectedGroupName = uiSelectedGroupName,
-        )
-    }
+internal enum class ProxyPageMode {
+    Compact,
+    SplitMaster,
+    SplitDetail,
 }
 
 @Composable
 fun ProxyPager(
     mainInnerPadding: PaddingValues,
-    onNavigateToProviders: (() -> Unit)?,
     isActive: Boolean,
-    @Suppress("UNUSED_PARAMETER") windowLayoutMode: WindowLayoutMode = WindowLayoutMode.Compact,
+    onOpenRouting: (() -> Unit)? = null,
+) {
+    val pane =
+        if (LocalDetailNavigator.current != null) {
+            ProxyPageMode.SplitMaster
+        } else {
+            ProxyPageMode.Compact
+        }
+    ProxyPageShell(
+        pane = pane,
+        mainInnerPadding = mainInnerPadding,
+        isActive = isActive,
+        onOpenRouting = onOpenRouting,
+    )
+}
+
+/** Proxy page as rendered in the split shell's right pane. */
+@Composable
+fun ProxyShellNodeDetail(
+    mainInnerPadding: PaddingValues,
+    onOpenRouting: (() -> Unit)? = null,
+) {
+    ProxyPageShell(
+        pane = ProxyPageMode.SplitDetail,
+        mainInnerPadding = mainInnerPadding,
+        isActive = true,
+        onOpenRouting = onOpenRouting,
+    )
+}
+
+@Composable
+private fun ProxyPageShell(
+    pane: ProxyPageMode,
+    mainInnerPadding: PaddingValues,
+    isActive: Boolean,
+    onOpenRouting: (() -> Unit)? = null,
 ) {
     val proxyViewModel = koinViewModel<ProxyViewModel>()
-    val screen = rememberProxyScreenVmState(proxyViewModel)
-    val proxyGroups = screen.proxyGroups
-    val testingProxyNames = screen.testingProxyNames
-    val sortMode = screen.sortMode
-    val uiSelectedGroupName = screen.uiSelectedGroupName
-    val groupScrollBehavior = MiuixScrollBehavior(snapAnimationSpec = null)
-    val topBarHazeState = LocalTopBarHazeState.current
-
-    var showSortPopup by rememberSaveable { mutableStateOf(false) }
-    val inSplitShell = LocalDetailNavigator.current.isSplitShell
-    val groupSelection =
-        rememberProxyGroupSelectionState(
-            proxyGroups = proxyGroups,
-            onRefreshGroup = proxyViewModel::refreshGroup,
-            retainLastKnownGroup = true,
-            controlledSelectedGroupName = if (inSplitShell) uiSelectedGroupName else null,
-            onControlledSelectedGroupNameChange =
-                if (inSplitShell) proxyViewModel::selectUiGroup else null,
-    )
-    val selectedGroupName = groupSelection.selectedGroupName
-    val displayGroup = groupSelection.displayGroup
-    val selectedNodeGroup = groupSelection.selectedGroup ?: displayGroup
-    var nodeSearchQuery by rememberSaveable(selectedGroupName) { mutableStateOf("") }
-
-    LaunchedEffect(inSplitShell, proxyGroups, selectedGroupName) {
-        if (!inSplitShell || proxyGroups.isEmpty()) return@LaunchedEffect
-        if (selectedGroupName == null || proxyGroups.none { it.name == selectedGroupName }) {
-            groupSelection.selectGroup(proxyGroups.first())
-        }
-    }
+    val proxyGroups by proxyViewModel.sortedProxyGroups.collectAsState()
+    val delayTests by proxyViewModel.delayTests.collectAsState()
+    val sortMode by proxyViewModel.sortMode.collectAsState()
+    val uiSelectedGroupName by proxyViewModel.uiSelectedGroupName.collectAsState()
+    val nodeSearchVisible by proxyViewModel.nodeSearchVisible.collectAsState()
+    val scrollBehavior = MiuixScrollBehavior(snapAnimationSpec = null)
     val coroutineScope = rememberCoroutineScope()
-    val groupListState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
-    val nodeListState =
-        rememberSaveable(selectedGroupName, saver = LazyListState.Saver) { LazyListState() }
-    LaunchedEffect(isActive, inSplitShell) {
-        if (!isActive && !inSplitShell) {
-            nodeSearchQuery = ""
+
+    // Which selection the page uses is decided by pane: the phone split keeps its own,
+    // while the split shell shares it with the left side through the ViewModel.
+    // The local holder always stays in composition, so switching back to the phone
+    // split restores the previous selection.
+    val localSelection = rememberSelectedGroupController()
+    val selectionController =
+        if (pane == ProxyPageMode.Compact) {
+            localSelection
+        } else {
+            rememberSelectedGroupController(uiSelectedGroupName, proxyViewModel::selectUiGroup)
         }
+    val state =
+        rememberProxyPageState(
+            pane = pane,
+            isActive = isActive,
+            proxyViewModel = proxyViewModel,
+            proxyGroups = proxyGroups,
+            nodeSearchVisible = nodeSearchVisible,
+            selectionController = selectionController,
+        )
+    val activeScrollSurface = state.activeScrollSurface
+    val activeIsAtTop = state.activeIsAtTop
+    val density = LocalDensity.current
+    LaunchedEffect(isActive, scrollBehavior, activeScrollSurface) {
+        if (!isActive) return@LaunchedEffect
+        scrollBehavior.syncFromScrollSurface(
+            atTop = activeIsAtTop.value,
+            rampPx = with(density) { UiDp.dp32.toPx() },
+        )
     }
+    // The group-tab branch uses the pager state as non-null, so bind it to a local
+    // val before that branch.
+    val tabbedPagerState = state.tabbedPagerState
 
-    val requestSelectedGroupDelayTest =
-        remember(selectedGroupName, proxyViewModel) {
-            {
-                val groupName = selectedGroupName ?: return@remember
-                proxyViewModel.testDelay(groupName)
-            }
+    val tabs =
+        when {
+            state.groupTabsMode -> state.visibleProxyGroups.map { it.name }
+            pane == ProxyPageMode.SplitDetail -> emptyList()
+            else -> state.proxyListTabs
         }
-    val locateCurrentProxy =
-        remember(coroutineScope, displayGroup, nodeListState, selectedGroupName) {
-            if (selectedGroupName == null) {
-                null
-            } else {
-                displayGroup
-                    ?.takeIf { group -> group.name == selectedGroupName }
-                    ?.let { group ->
-                        fun() {
-                            val proxyIndex =
-                                group.proxies.indexOfFirst { proxy -> proxy.name == group.now }
-                            if (proxyIndex < 0) return
-                            coroutineScope.launch {
-                                nodeListState.animateLocateToItem(proxyIndex + 1)
-                            }
-                        }
-                    }
-            }
+    val selectedTabIndex = state.tabbedPagerState?.currentPage ?: state.proxyListTabIndex
+    val searchAvailable =
+        when (pane) {
+            ProxyPageMode.SplitDetail -> state.selectedNodeGroup != null
+            ProxyPageMode.Compact,
+            ProxyPageMode.SplitMaster -> state.selectedGroupName != null
         }
-
-    BackHandler(enabled = isActive && !inSplitShell && selectedGroupName != null) {
-        groupSelection.clearSelection()
-    }
-
-    LaunchedEffect(isActive) { proxyViewModel.ensureCoreLoaded(isActive, source = "proxy_page") }
-
-    DisposableEffect(proxyViewModel) {
-        onDispose { proxyViewModel.ensureCoreLoaded(false, source = "proxy_page") }
-    }
+    // What can appear in the "More" menu is decided once, here; the top bar only
+    // lays it out and owns the anchor.
+    val nodeMenuActions =
+        buildNodeMenuActions(
+            pane = pane,
+            sortMode = sortMode,
+            onSortSelected = proxyViewModel::setSortMode,
+            state = state,
+            searchAvailable = searchAvailable,
+            nodeSearchVisible = nodeSearchVisible,
+            onOpenRouting = onOpenRouting,
+        )
+    // Top bar speed-test button: always tests all nodes (the group page and the node
+    // page are no longer distinguished).
+    val testAllNodes: () -> Unit = { proxyViewModel.testDelay() }
 
     ProvideProxyDelayFlows(proxyViewModel) {
-        Scaffold(
+        GlassScaffold(
             topBar = {
-                ProxyTopBar(
-                    title = YumeTxt.Proxy.Title,
-                    scrollBehavior = groupScrollBehavior,
-                    showBack = false,
-                    onBack = {},
-                    onNavigateToProviders = onNavigateToProviders,
-                    showSortAction = selectedGroupName == null,
-                    showSortPopup = showSortPopup,
-                    onShowSortPopupChange = { showSortPopup = it },
-                    sortMode = sortMode,
-                    onSortSelected = proxyViewModel::setSortMode,
+                ProxyTopBarSection(
+                    scrollBehavior = scrollBehavior,
+                    onTestAllNodes = testAllNodes,
+                    nodeMenuActions = nodeMenuActions,
+                )
+            },
+            contentOverlay = { scaffoldPadding ->
+                if (tabs.isNotEmpty()) {
+                    ProxyTabsOverlay(
+                        tabs = tabs,
+                        selectedTabIndex = selectedTabIndex,
+                        groupTabsMode = state.groupTabsMode,
+                        tabCollapseState = state.tabCollapseState,
+                        topPadding = scaffoldPadding.calculateTopPadding() + UiDp.dp20,
+                        onTabSelected = { index ->
+                            if (state.groupTabsMode) {
+                                tabbedPagerState?.let { pagerState ->
+                                    coroutineScope.launch { pagerState.animateScrollToPage(index) }
+                                }
+                            } else {
+                                state.selectProxyListTab(index)
+                            }
+                        },
+                    )
+                }
+            },
+        ) { scaffoldPadding ->
+            // The strategy page (split left side) and the phone split's group page render
+            // the same list.
+            val groupListContent: @Composable () -> Unit = {
+                ProxyContent(
+                    proxyGroups = state.displayedProxyGroups,
+                    scrollBehavior = scrollBehavior,
+                    innerPadding = scaffoldPadding,
+                    mainInnerPadding = mainInnerPadding,
+                    testingGroupNames = delayTests.groupNames,
+                    onGroupClick = selectionController::selectGroup,
+                    onGroupTest = { group -> proxyViewModel.testDelay(group.name) },
+                    listState = state.groupListState,
+                    topOverlayInset = state.categoryTabInset,
                 )
             }
-        ) { scaffoldPadding ->
+            // Values shared by all three node-page hosts; each call site copies only the
+            // entries it changes.
+            val nodePage =
+                ProxyNodePageState(
+                    sortMode = sortMode,
+                    testingGroupNames = delayTests.groupNames,
+                    testingProxyNames = delayTests.proxyNames,
+                    mainInnerPadding = mainInnerPadding,
+                    outerInnerPadding = scaffoldPadding,
+                    scrollBehavior = scrollBehavior,
+                    listState = state.nodeListState,
+                    gridState = state.nodeGridState,
+                    twoColumnNodes = state.twoColumnNodes,
+                    searchQuery = state.nodeSearchQuery,
+                    searchVisible = nodeSearchVisible,
+                )
+            val onSearchQueryChange: (String) -> Unit = { state.nodeSearchQuery = it }
             Box(
                 modifier =
-                    Modifier.fillMaxSize().let { mod ->
-                        if (topBarHazeState != null) mod.hazeSource(state = topBarHazeState) else mod
-                    }
+                    Modifier
+                        .fillMaxSize()
+                        .nestedScroll(state.tabCollapseState.nestedScrollConnection)
             ) {
-                if (inSplitShell) {
-                    if (proxyGroups.isNotEmpty()) {
-                    ProxyContent(
-                        proxyGroups = proxyGroups,
-                        scrollBehavior = groupScrollBehavior,
-                        innerPadding = scaffoldPadding,
-                        mainInnerPadding = mainInnerPadding,
-                        testingGroupNames = proxyViewModel.testingGroupNames,
-                        onGroupClick = groupSelection.selectGroup,
-                        onGroupTest = { group -> proxyViewModel.testDelay(group.name) },
-                        listState = groupListState,
+                if (state.groupTabsMode && tabbedPagerState != null) {
+                    ProxyGroupTabsPane(
+                        state = state,
+                        pagerState = tabbedPagerState,
+                        nodePage = nodePage,
+                        proxyViewModel = proxyViewModel,
+                        onSearchQueryChange = onSearchQueryChange,
                     )
-                    }
                 } else {
-                    AnimatedContent(
-                    targetState = selectedGroupName,
-                    transitionSpec = {
-                        if (targetState != null) {
-                            (slideInHorizontally(
-                                animationSpec =
-                                    tween(durationMillis = 380, easing = AnimationSpecs.Legacy),
-                                initialOffsetX = { it },
-                            ) +
-                                fadeIn(
-                                    animationSpec =
-                                        tween(
-                                            durationMillis = 180,
-                                            easing = AnimationSpecs.Legacy,
-                                        )
-                                )) togetherWith
-                                (slideOutHorizontally(
-                                    animationSpec =
-                                        tween(durationMillis = 340, easing = AnimationSpecs.Legacy),
-                                    targetOffsetX = { -it / 3 },
-                                ) +
-                                    fadeOut(
-                                        animationSpec =
-                                            tween(
-                                                durationMillis = 160,
-                                                easing = AnimationSpecs.Legacy,
-                                            )
-                                    ))
-                        } else {
-                            (slideInHorizontally(
-                                animationSpec =
-                                    tween(durationMillis = 340, easing = AnimationSpecs.Legacy),
-                                initialOffsetX = { -it / 3 },
-                            ) +
-                                fadeIn(
-                                    animationSpec =
-                                        tween(
-                                            durationMillis = 180,
-                                            easing = AnimationSpecs.Legacy,
-                                        )
-                                )) togetherWith
-                                (slideOutHorizontally(
-                                    animationSpec =
-                                        tween(durationMillis = 380, easing = AnimationSpecs.Legacy),
-                                    targetOffsetX = { it },
-                                ) +
-                                    fadeOut(
-                                        animationSpec =
-                                            tween(
-                                                durationMillis = 160,
-                                                easing = AnimationSpecs.Legacy,
-                                            )
-                                    ))
+                    when (pane) {
+                        ProxyPageMode.SplitMaster -> {
+                            if (proxyGroups.isNotEmpty()) {
+                                groupListContent()
+                            }
                         }
-                    },
-                    label = "proxy_content_slide",
-                ) { targetGroupName ->
-                    if (targetGroupName == null) {
-                        if (proxyGroups.isNotEmpty()) {
-                            ProxyContent(
+
+                        ProxyPageMode.Compact -> {
+                            ProxyCompactNodesPane(
+                                state = state,
                                 proxyGroups = proxyGroups,
-                                scrollBehavior = groupScrollBehavior,
-                                innerPadding = scaffoldPadding,
-                                mainInnerPadding = mainInnerPadding,
-                                testingGroupNames = proxyViewModel.testingGroupNames,
-                                onGroupClick = groupSelection.selectGroup,
-                                onGroupTest = { group -> proxyViewModel.testDelay(group.name) },
-                                listState = groupListState,
+                                groupListContent = groupListContent,
+                                nodePage = nodePage,
+                                proxyViewModel = proxyViewModel,
+                                onSearchQueryChange = onSearchQueryChange,
                             )
                         }
-                    } else {
-                        NodeListPage(
-                            group = selectedNodeGroup,
-                            sortMode = sortMode,
-                            testingGroupNames = proxyViewModel.testingGroupNames,
-                            testingProxyNames = testingProxyNames,
-                            delayTestProgress = proxyViewModel.delayTestProgress,
-                            mainInnerPadding = mainInnerPadding,
-                            outerInnerPadding = scaffoldPadding,
-                            scrollBehavior = groupScrollBehavior,
-                            listState = nodeListState,
-                            onSelectProxy = { groupName, proxyName ->
-                                proxyViewModel.selectProxy(groupName, proxyName)
-                            },
-                            onTestDelay = requestSelectedGroupDelayTest,
-                            onTestProxyDelay = proxyViewModel::testProxyDelay,
-                            onScrollDirectionChanged = {},
-                            useAdaptiveGrid = false,
-                            searchQuery = nodeSearchQuery,
-                            onSearchQueryChange = { nodeSearchQuery = it },
-                            showSortPopup = showSortPopup,
-                            onShowMorePopupChange = { showSortPopup = it },
-                            onSortSelected = proxyViewModel::setSortMode,
-                            onLocateCurrentProxy = locateCurrentProxy,
-                        )
+
+                        ProxyPageMode.SplitDetail -> {
+                            ProxySplitDetailNodesPane(
+                                state = state,
+                                proxyGroups = proxyGroups,
+                                nodePage = nodePage,
+                                proxyViewModel = proxyViewModel,
+                                onSearchQueryChange = onSearchQueryChange,
+                            )
+                        }
                     }
                 }
             }
         }
     }
-    }
 }
 
 @Composable
-private fun ProxyContent(
-    proxyGroups: List<ProxyGroupInfo>,
+private fun ProxyTopBarSection(
     scrollBehavior: ScrollBehavior,
-    innerPadding: PaddingValues,
-    mainInnerPadding: PaddingValues,
-    onGroupClick: (ProxyGroupInfo) -> Unit,
-    onGroupTest: (ProxyGroupInfo) -> Unit,
-    testingGroupNames: StateFlow<Set<String>>,
-    listState: LazyListState,
+    onTestAllNodes: () -> Unit,
+    nodeMenuActions: NodeMenuActions,
 ) {
-    val testingNames by testingGroupNames.collectAsState()
-    val spacing = LocalSpacing.current
-    val revealCount = rememberRowReveal(itemCount = proxyGroups.size, listState = listState)
-    ScreenLazyColumn(
-        lazyListState = listState,
+    ProxyTopBar(
+        title = YumeTxt.Proxy.Title,
         scrollBehavior = scrollBehavior,
-        innerPadding = innerPadding,
-        enableGlobalScroll = true,
-        contentPadding =
-            PaddingValues(
-                start = UiDp.dp12,
-                end = UiDp.dp12,
-                top = innerPadding.calculateTopPadding() + UiDp.dp14,
-                bottom = mainInnerPadding.calculateBottomPadding() + spacing.space12,
-            ),
-    ) {
-        nodeGroupItems(
-            groups = proxyGroups,
-            onGroupClick = onGroupClick,
-            onGroupTest = onGroupTest,
-            testingGroupNames = testingNames,
-            itemVerticalPadding = UiDp.dp6,
-            revealCount = revealCount,
+        onTestAllNodes = onTestAllNodes,
+        menu = { popup ->
+            NodeActionsMenu(
+                show = popup.expanded,
+                onDismiss = popup::dismiss,
+                actions = nodeMenuActions,
+                anchor = popup.anchor,
+            )
+        },
+    )
+}
+
+/**
+ * Collapsing group-tab overlay. The call site decides whether the slot emits at all, so an
+ * empty [tabs] list never gets here.
+ */
+@Composable
+private fun ProxyTabsOverlay(
+    tabs: List<String>,
+    selectedTabIndex: Int,
+    groupTabsMode: Boolean,
+    tabCollapseState: ProxyTabScrollState,
+    topPadding: Dp,
+    onTabSelected: (Int) -> Unit,
+) {
+    ProxyCollapsingTabs(
+        tabs = tabs,
+        selectedTabIndex = selectedTabIndex,
+        onTabSelected = onTabSelected,
+        topPadding = topPadding,
+        collapseState = tabCollapseState,
+        scrollable = groupTabsMode,
+    )
+}
+
+/**
+ * Group-tab host: one swipeable [ProxyNodePage] per visible group, each keeping its own saved
+ * list/grid state, registered back into [ProxyPageState] for the following recompositions.
+ */
+@Composable
+private fun ProxyGroupTabsPane(
+    state: ProxyPageState,
+    pagerState: PagerState,
+    nodePage: ProxyNodePageState,
+    proxyViewModel: ProxyViewModel,
+    onSearchQueryChange: (String) -> Unit,
+) {
+    ProxyGroupTabPager(
+        groups = state.visibleProxyGroups,
+        pagerState = pagerState,
+    ) { pageGroup ->
+        val pageListState = rememberSavedListState(pageGroup.name)
+        val pageGridState = rememberSavedGridState(pageGroup.name)
+        LaunchedEffect(pageGroup.name, pageListState, pageGridState) {
+            state.groupTabListStates[pageGroup.name] = pageListState
+            state.groupTabGridStates[pageGroup.name] = pageGridState
+        }
+        ProxyNodePage(
+            page =
+                nodePage.copy(
+                    group = pageGroup,
+                    listState = pageListState,
+                    gridState = pageGridState,
+                    topOverlayInset = ProxyTabBandInset,
+                ),
+            proxyViewModel = proxyViewModel,
+            onSearchQueryChange = onSearchQueryChange,
+            onTestDelay = { proxyViewModel.testDelay(pageGroup.name) },
         )
     }
 }
 
+/**
+ * Phone split host: slides between the group list and the selected group's node page, and stops
+ * on its own saved scroll state while the node page is shown.
+ */
 @Composable
-internal fun ProxyShellNodeDetailContent(
-    mainInnerPadding: PaddingValues,
-    onNavigateToProviders: (() -> Unit)? = null,
+private fun ProxyCompactNodesPane(
+    state: ProxyPageState,
+    proxyGroups: List<ProxyGroupInfo>,
+    groupListContent: @Composable () -> Unit,
+    nodePage: ProxyNodePageState,
+    proxyViewModel: ProxyViewModel,
+    onSearchQueryChange: (String) -> Unit,
 ) {
-    val proxyViewModel = koinViewModel<ProxyViewModel>()
-    val screen = rememberProxyScreenVmState(proxyViewModel)
-    val proxyGroups = screen.proxyGroups
-    val testingProxyNames = screen.testingProxyNames
-    val sortMode = screen.sortMode
-    val uiSelectedGroupName = screen.uiSelectedGroupName
-    val scrollBehavior = MiuixScrollBehavior(snapAnimationSpec = null)
-    val coroutineScope = rememberCoroutineScope()
-    val groupSelection =
-        rememberProxyGroupSelectionState(
-            proxyGroups = proxyGroups,
-            onRefreshGroup = proxyViewModel::refreshGroup,
-            retainLastKnownGroup = true,
-            controlledSelectedGroupName = uiSelectedGroupName,
-            onControlledSelectedGroupNameChange = proxyViewModel::selectUiGroup,
-        )
-    val selectedGroupName = groupSelection.selectedGroupName
-    val displayGroup = groupSelection.displayGroup
-    val currentGroup = groupSelection.selectedGroup ?: displayGroup ?: proxyGroups.firstOrNull()
-    var showSortPopup by rememberSaveable { mutableStateOf(false) }
-    var nodeSearchQuery by rememberSaveable(selectedGroupName) { mutableStateOf("") }
-
-    // The tablet detail pane can outlive the left pager during a destination transition. Keep a
-    // dedicated sync owner so a cold local core is queried even when the left page is not resumed.
-    LaunchedEffect(proxyViewModel) {
-        proxyViewModel.ensureCoreLoaded(true, source = "proxy_detail")
-    }
-
-    DisposableEffect(proxyViewModel) {
-        onDispose { proxyViewModel.ensureCoreLoaded(false, source = "proxy_detail") }
-    }
-
-    LaunchedEffect(proxyGroups, selectedGroupName) {
-        if (proxyGroups.isEmpty()) return@LaunchedEffect
-        if (selectedGroupName == null || proxyGroups.none { it.name == selectedGroupName }) {
-            groupSelection.selectGroup(proxyGroups.first())
+    AnimatedContent(
+        targetState = state.selectedGroupName,
+        transitionSpec = {
+            proxyGroupContentTransform(forward = targetState != null)
+        },
+        label = "proxy_content_slide",
+    ) { targetGroupName ->
+        if (targetGroupName == null) {
+            if (proxyGroups.isNotEmpty()) {
+                groupListContent()
+            }
+        } else {
+            // The transition needs an opaque background so it can cover the group list
+            // underneath.
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .background(MiuixTheme.colorScheme.surface),
+            ) {
+                ProxyNodePage(
+                    page =
+                        nodePage.copy(
+                            group = state.selectedNodeGroup,
+                            topOverlayInset = state.categoryTabInset,
+                        ),
+                    proxyViewModel = proxyViewModel,
+                    onSearchQueryChange = onSearchQueryChange,
+                    onTestDelay = state::testSelectedGroupDelay,
+                )
+            }
         }
     }
+}
 
-    val activeGroupName = selectedGroupName ?: currentGroup?.name
-
+/**
+ * Split shell right-pane host: switches node pages by group, animating in the direction the
+ * group order moved.
+ */
+@Composable
+private fun ProxySplitDetailNodesPane(
+    state: ProxyPageState,
+    proxyGroups: List<ProxyGroupInfo>,
+    nodePage: ProxyNodePageState,
+    proxyViewModel: ProxyViewModel,
+    onSearchQueryChange: (String) -> Unit,
+) {
+    val activeGroupName =
+        state.selectedGroupName ?: proxyGroups.firstOrNull()?.name
     AnimatedContent(
         targetState = activeGroupName,
         modifier = Modifier.fillMaxSize(),
         transitionSpec = {
             val fromIndex =
-                initialState?.let { name -> proxyGroups.indexOfFirst { it.name == name } } ?: -1
+                initialState?.let { name ->
+                    proxyGroups.indexOfFirst { it.name == name }
+                } ?: -1
             val toIndex =
-                targetState?.let { name -> proxyGroups.indexOfFirst { it.name == name } } ?: -1
-            verticalBounceContentTransform(forward = toIndex >= fromIndex)
+                targetState?.let { name ->
+                    proxyGroups.indexOfFirst { it.name == name }
+                } ?: -1
+            proxyGroupContentTransform(forward = toIndex >= fromIndex)
         },
         label = "proxy_shell_group_switch",
     ) { groupName ->
         val pageGroup =
-            groupName?.let { name -> proxyGroups.firstOrNull { it.name == name } } ?: currentGroup
-        // Adaptive grid owns the real scroll surface on the shell right pane.
-        val nodeGridState =
-            rememberSaveable(groupName, saver = LazyGridState.Saver) { LazyGridState() }
-        val requestSelectedGroupDelayTest =
-            remember(groupName, proxyViewModel) {
-                {
-                    val targetGroupName = groupName ?: return@remember
-                    proxyViewModel.testDelay(targetGroupName)
+            groupName
+                ?.let { name ->
+                    proxyGroups.firstOrNull { it.name == name }
                 }
-            }
-        val locateCurrentProxy =
-            remember(coroutineScope, pageGroup, nodeGridState, groupName) {
-                if (groupName == null || pageGroup == null) {
-                    null
-                } else {
-                    pageGroup
-                        .takeIf { group -> group.name == groupName }
-                        ?.let { group ->
-                            fun() {
-                                val proxyIndex =
-                                    group.proxies.indexOfFirst { proxy -> proxy.name == group.now }
-                                if (proxyIndex < 0) return
-                                coroutineScope.launch {
-                                    nodeGridState.animateLocateToItem(proxyIndex + 1)
-                                }
-                            }
-                        }
+                ?: state.selectedNodeGroup
+        // The selected layout owns the real scroll surface on the shell right pane.
+        // Keyed on the group actually rendered: [groupName] is null while the
+        // shell has not selected one, and keying on that would let every group
+        // share one saved scroll position.
+        val pageListState = rememberSavedListState(pageGroup?.name)
+        val pageGridState = rememberSavedGridState(pageGroup?.name)
+        ProxyNodePage(
+            page =
+                nodePage.copy(
+                    group = pageGroup,
+                    listState = pageListState,
+                    gridState = pageGridState,
+                ),
+            proxyViewModel = proxyViewModel,
+            onSearchQueryChange = onSearchQueryChange,
+            onTestDelay = {
+                pageGroup?.let { group ->
+                    proxyViewModel.testDelay(group.name)
                 }
-            }
-        ProvideProxyDelayFlows(proxyViewModel) {
-            Scaffold(
-                topBar = {
-                    ProxyTopBar(
-                        title = pageGroup?.name ?: YumeTxt.Proxy.Title,
-                        scrollBehavior = scrollBehavior,
-                        showBack = false,
-                        onBack = {},
-                        onNavigateToProviders = onNavigateToProviders,
-                        showSortAction = false,
-                        showSortPopup = showSortPopup,
-                        onShowSortPopupChange = { showSortPopup = it },
-                        sortMode = sortMode,
-                        onSortSelected = proxyViewModel::setSortMode,
-                    )
-                }
-            ) { scaffoldPadding ->
-                if (pageGroup != null) {
-                    NodeListPage(
-                        group = pageGroup,
-                        sortMode = sortMode,
-                        testingGroupNames = proxyViewModel.testingGroupNames,
-                        testingProxyNames = testingProxyNames,
-                        delayTestProgress = proxyViewModel.delayTestProgress,
-                        mainInnerPadding = mainInnerPadding,
-                        outerInnerPadding = scaffoldPadding,
-                        scrollBehavior = scrollBehavior,
-                        listState = remember { LazyListState() },
-                        gridState = nodeGridState,
-                        onSelectProxy = { selectedGroup, proxyName ->
-                            proxyViewModel.selectProxy(selectedGroup, proxyName)
-                        },
-                        onTestDelay = requestSelectedGroupDelayTest,
-                        onTestProxyDelay = proxyViewModel::testProxyDelay,
-                        onScrollDirectionChanged = {},
-                        useAdaptiveGrid = true,
-                        searchQuery = nodeSearchQuery,
-                        onSearchQueryChange = { nodeSearchQuery = it },
-                        showSortPopup = showSortPopup,
-                        onShowMorePopupChange = { showSortPopup = it },
-                        onSortSelected = proxyViewModel::setSortMode,
-                        onLocateCurrentProxy = locateCurrentProxy,
-                    )
-                }
-            }
-        }
+            },
+        )
     }
 }
 
-@Composable
-private fun ProxyTopBar(
-    title: String,
-    scrollBehavior: ScrollBehavior,
-    showBack: Boolean,
-    onBack: () -> Unit,
-    onNavigateToProviders: (() -> Unit)?,
-    showSortAction: Boolean,
-    showSortPopup: Boolean,
-    onShowSortPopupChange: (Boolean) -> Unit,
+/**
+ * Contents of the "More" menu: sorting is always there, layout only appears on the side
+ * that has a node list, and search only on a group page that can search.
+ * It is a function so the shell is left with wiring only — reading this one expression
+ * tells you what the menu holds.
+ */
+private fun buildNodeMenuActions(
+    pane: ProxyPageMode,
     sortMode: ProxySortMode,
     onSortSelected: (ProxySortMode) -> Unit,
-) {
-    TopBar(
-        title = title,
-        scrollBehavior = scrollBehavior,
-        navigationIconPadding = UiDp.dp24,
-        actionIconPadding = UiDp.dp24,
-        navigationIcon = {
-            if (showBack) {
-                IconButton(onClick = onBack) {
-                    Icon(
-                        MiuixIcons.Back,
-                        contentDescription = YumeTxt.Component.Navigation.Back,
-                    )
-                }
-            }
-        },
-        actions = {
-            if (showSortAction) {
-                onNavigateToProviders?.let { navigateToProviders ->
-                    IconButton(onClick = navigateToProviders) {
-                        Icon(
-                            Yume.Folders,
-                            contentDescription = YumeTxt.Providers.Title,
-                        )
-                    }
-                }
-            }
-        },
+    state: ProxyPageState,
+    searchAvailable: Boolean,
+    nodeSearchVisible: Boolean,
+    onOpenRouting: (() -> Unit)?,
+): NodeMenuActions =
+    NodeMenuActions(
+        sortMode = sortMode,
+        onSortSelected = onSortSelected,
+        layout =
+            if (pane == ProxyPageMode.SplitMaster) {
+                // The split left side only has a group list, so there is no node list to lay out.
+                null
+            } else {
+                NodeLayoutActions(
+                    twoColumnNodes = state.twoColumnNodes,
+                    onTwoColumnNodesChange = { state.twoColumnNodes = it },
+                    groupTabsMode = state.groupTabsMode,
+                    onGroupTabsModeChange = { state.groupTabsMode = it },
+                )
+            },
+        routing = onOpenRouting,
+        search =
+            if (searchAvailable) {
+                NodeSearchActions(visible = nodeSearchVisible, onToggle = state::toggleNodeSearch)
+            } else {
+                null
+            },
     )
+
+/** Horizontal group ↔ node transition used by the phone and split-shell proxy pages. */
+private fun proxyGroupContentTransform(forward: Boolean): ContentTransform {
+    val enterMillis = if (forward) 380 else 340
+    val exitMillis = if (forward) 340 else 380
+    return (slideInHorizontally(
+        animationSpec = tween(durationMillis = enterMillis, easing = AnimationSpecs.Legacy),
+        initialOffsetX = { width -> if (forward) width else -width / 3 },
+    ) + fadeIn(animationSpec = tween(durationMillis = 180, easing = AnimationSpecs.Legacy))) togetherWith
+        (slideOutHorizontally(
+            animationSpec = tween(durationMillis = exitMillis, easing = AnimationSpecs.Legacy),
+            targetOffsetX = { width -> if (forward) -width / 3 else width },
+        ) + fadeOut(animationSpec = tween(durationMillis = 160, easing = AnimationSpecs.Legacy)))
+}
+
+private suspend fun ScrollBehavior.syncFromScrollSurface(atTop: Boolean, rampPx: Float) {
+    if (atTop) {
+        state.contentOffset = 0f
+        state.heightOffset = 0f
+        return
+    }
+    state.contentOffset = minOf(state.contentOffset, -rampPx)
+    val heightLimit =
+        snapshotFlow { state.heightOffsetLimit }
+            .first { it < 0f && it > -Float.MAX_VALUE }
+    state.heightOffset = heightLimit
 }

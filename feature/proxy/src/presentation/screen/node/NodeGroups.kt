@@ -22,18 +22,14 @@
 
 package com.github.yumeyucca.yumebox.presentation.screen.node
 
-
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,37 +49,29 @@ import com.github.yumeyucca.yumebox.domain.model.displayedSelectionDelay
 import com.github.yumeyucca.yumebox.domain.model.resolveTerminalProxy
 import com.github.yumeyucca.yumebox.presentation.component.CountryFlagCircle
 import com.github.yumeyucca.yumebox.presentation.icon.Yume
-import com.github.yumeyucca.yumebox.presentation.icon.yume.Speed
 import com.github.yumeyucca.yumebox.presentation.icon.yume.chevron
 import com.github.yumeyucca.yumebox.presentation.theme.AppTheme
 import com.github.yumeyucca.yumebox.presentation.theme.UiDp
-import com.github.yumeyucca.yumebox.presentation.theme.rememberRowShown
-import com.github.yumeyucca.yumebox.presentation.theme.rowReveal
+import com.github.yumeyucca.yumebox.presentation.theme.inactiveSurfaceColor
 import com.github.yumeyucca.yumebox.core.locale.YumeTxt
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.SinkFeedback
-import top.yukonga.miuix.kmp.utils.pressable
 import com.github.panpf.sketch.AsyncImage as SketchAsyncImage
-
-private data class GroupBadge(val label: String)
-
-private fun groupBadge(type: String): GroupBadge = GroupBadge(type)
 
 internal fun LazyListScope.nodeGroupItems(
     groups: List<ProxyGroupInfo>,
     onGroupClick: (ProxyGroupInfo) -> Unit,
     onGroupTest: (ProxyGroupInfo) -> Unit,
     testingGroupNames: Set<String> = emptySet(),
-    itemVerticalPadding: Dp = UiDp.dp6,
-    revealCount: Int = Int.MAX_VALUE,
+    itemVerticalPadding: Dp = UiDp.dp5,
 ) {
     itemsIndexed(
         items = groups,
         key = { _, group -> "${group.type}:${group.name}" },
         contentType = { _, _ -> "NodeGroupCard" },
-    ) { index, group ->
+    ) { _, group ->
         NodeGroupCard(
             group = group,
             allGroups = groups,
@@ -91,7 +79,6 @@ internal fun LazyListScope.nodeGroupItems(
             onClick = onGroupClick,
             onTestClick = onGroupTest,
             modifier = Modifier
-                .rowReveal(rememberRowShown(index, revealCount))
                 .fillMaxWidth()
                 .padding(vertical = itemVerticalPadding),
         )
@@ -101,7 +88,7 @@ internal fun LazyListScope.nodeGroupItems(
 @Composable
 internal fun NodeGroupCard(
     group: ProxyGroupInfo,
-    allGroups: List<ProxyGroupInfo> = listOf(group),
+    allGroups: List<ProxyGroupInfo>,
     isDelayTesting: Boolean,
     onClick: (ProxyGroupInfo) -> Unit,
     onTestClick: (ProxyGroupInfo) -> Unit,
@@ -109,8 +96,6 @@ internal fun NodeGroupCard(
 ) {
     val cardShape = RoundedCornerShape(AppTheme.radii.radius24)
     val interactionSource = remember { MutableInteractionSource() }
-    val testInteractionSource = remember { MutableInteractionSource() }
-
     val currentProxy =
         remember(group.now, allGroups) {
             allGroups.resolveTerminalProxy(group.now)
@@ -137,14 +122,18 @@ internal fun NodeGroupCard(
         remember(group.now, allGroups) {
             allGroups.displayedSelectionDelay(group)
         }
-    val badge = remember(group.type) { groupBadge(group.type) }
 
     Column(
         modifier =
             modifier
-                // Keep the original press motion, but put it outside the card's visual layers so
-                // the shadow, shape, background, and content move as a single card.
-                .pressable(interactionSource = interactionSource, indication = SinkFeedback())
+                // Keep the press motion outside the card's visual layers so the shadow, shape,
+                // background, and content move as one card. Use one clickable node rather than a
+                // separate pressable + clickable pair, which can compete for the same gesture.
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = SinkFeedback(),
+                    onClick = { onClick(group) },
+                )
                 .shadow(
                     elevation = UiDp.dp4,
                     shape = cardShape,
@@ -153,11 +142,6 @@ internal fun NodeGroupCard(
                 )
                 .clip(cardShape)
                 .background(MiuixTheme.colorScheme.background)
-                .clickable(
-                    interactionSource = interactionSource,
-                    indication = null,
-                    onClick = { onClick(group) },
-                )
                 .padding(horizontal = UiDp.dp16, vertical = UiDp.dp10),
         verticalArrangement = Arrangement.spacedBy(UiDp.dp8),
     ) {
@@ -194,7 +178,7 @@ internal fun NodeGroupCard(
                     )
                     val primary = MiuixTheme.colorScheme.primary
                     Text(
-                        text = badge.label,
+                        text = group.type,
                         style = MiuixTheme.textStyles.footnote1.copy(fontSize = 10.sp),
                         color = primary,
                         modifier =
@@ -204,52 +188,13 @@ internal fun NodeGroupCard(
                                 .background(primary.copy(alpha = 0.1f))
                                 .padding(horizontal = UiDp.dp8, vertical = UiDp.dp3),
                     )
-                    Box(
-                        modifier =
-                            Modifier
-                                .padding(start = UiDp.dp6)
-                                .width(UiDp.dp28)
-                                .height(UiDp.dp22)
-                                .clickable(
-                                    interactionSource = testInteractionSource,
-                                    indication = null,
-                                    enabled = !isDelayTesting,
-                                    onClick = { onTestClick(group) },
-                                ),
-                        contentAlignment = Alignment.CenterEnd,
-                    ) {
-                        Box(
-                            modifier =
-                                Modifier
-                                    .size(UiDp.dp22)
-                                    .clip(CircleShape)
-                                    .background(primary.copy(alpha = 0.1f)),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            if (isDelayTesting) {
-                                RotatingCircleGauge(
-                                    isRotating = true,
-                                    modifier = Modifier.size(UiDp.dp14),
-                                    tint = primary,
-                                    contentDescription = null,
-                                )
-                            } else {
-                                Icon(
-                                    Yume.Speed,
-                                    contentDescription = YumeTxt.Proxy.Action.Test,
-                                    modifier = Modifier.size(UiDp.dp14),
-                                    tint = primary,
-                                )
-                            }
-                        }
-                    }
                 }
 
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(UiDp.dp14))
-                        .background(MiuixTheme.colorScheme.surface)
+                        .background(inactiveSurfaceColor())
                         .padding(horizontal = UiDp.dp10, vertical = UiDp.dp6),
                 ) {
                     Row(
@@ -269,7 +214,7 @@ internal fun NodeGroupCard(
                             Text(
                                 text = currentNodeName,
                                 style = MiuixTheme.textStyles.body2,
-                                color = MiuixTheme.colorScheme.onSurface,
+                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
@@ -293,19 +238,15 @@ internal fun NodeGroupCard(
 
 @Composable
 private fun GroupDelayLabel(proxyName: String, fallbackDelay: Int) {
-    val delayProvider = LocalProxyDelayFlow.current
-    val delayFlow = remember(proxyName, delayProvider) { delayProvider(proxyName) }
-    val liveDelay by delayFlow.collectAsState()
     // The group card keeps its navigation chevron until a real delay is available. The number is
     // the selected node's measurement, including a copy published on another group.
-    val delay = liveDelay ?: fallbackDelay
-    val delayLabel = if (delay != 0) nodeLatencyLabel(delay) else null
-    if (delayLabel != null) {
-        val (delayText, delayColor) = delayLabel
+    val delay = rememberLiveNodeDelay(proxyName, fallbackDelay)
+    val latency = if (delay != 0) nodeLatencyLabel(delay) else null
+    if (latency != null) {
         Text(
-            text = delayText,
+            text = latency.text,
             style = MiuixTheme.textStyles.footnote1,
-            color = delayColor,
+            color = latency.color,
         )
     } else {
         Icon(
@@ -317,12 +258,18 @@ private fun GroupDelayLabel(proxyName: String, fallbackDelay: Int) {
     }
 }
 
+/** `scheme:` prefixes the app should keep as written instead of guessing a web host. */
+private val SchemeUriRegex = Regex("^[a-zA-Z][a-zA-Z\\d+.-]*:.*$")
+
+/** Bare `host.domain/path` inputs that are really https URLs missing their scheme. */
+private val BareHostUriRegex = Regex("^[^/\\s]+\\.[^/\\s]+(?:/.*)?$")
+
 private fun normalizeNodeGroupIconUri(raw: String): String {
     val normalized = raw.trim()
     if (normalized.startsWith("//")) return "https:$normalized"
     if (normalized.startsWith("www.", ignoreCase = true)) return "https://$normalized"
-    if (normalized.matches(Regex("^[a-zA-Z][a-zA-Z\\d+.-]*:.*$"))) return normalized
-    if (normalized.matches(Regex("^[^/\\s]+\\.[^/\\s]+(?:/.*)?$"))) return "https://$normalized"
+    if (normalized.matches(SchemeUriRegex)) return normalized
+    if (normalized.matches(BareHostUriRegex)) return "https://$normalized"
     return normalized
 }
 

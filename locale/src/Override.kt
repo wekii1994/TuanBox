@@ -36,6 +36,7 @@ internal val ZhHansYumeStrings_Override: YumeStrings_Override = YumeStrings_Over
         Delete = "删除配置",
         EditButton = "编辑",
         DeleteButton = "删除",
+        Rename = "重命名",
         Apply = "应用配置",
         ApplyButton = "应用",
     ),
@@ -58,6 +59,7 @@ internal val ZhHansYumeStrings_Override: YumeStrings_Override = YumeStrings_Over
         HttpError = "HTTP 请求失败：%d",
         UnsupportedType = "仅支持 YAML 或 JS",
         EmptyJavaScript = "JS 文件为空",
+        TooLarge = "导入文件过大（上限 %d MB）",
     ),
     Export = YumeStrings_Override_Export(
         Failed = "导出失败：%s",
@@ -72,9 +74,10 @@ internal val ZhHansYumeStrings_Override: YumeStrings_Override = YumeStrings_Over
         ),
         Delete = YumeStrings_Override_Dialog_Delete(
             Title = "删除配置",
-            InUseMessage = "配置 %s 正在被订阅使用，删除后将解除绑定关系.确定要删除吗？此操作不可恢复.",
-            Message = "确定要删除配置 %s 吗？此操作不可恢复.",
+            InUseMessage = "配置 %s 正在被订阅使用，删除后将解除绑定关系.确定要删除吗？此操作不可恢复",
+            Message = "确定要删除配置 %s 吗？此操作不可恢复",
         ),
+        Rename = "重命名",
         Button = YumeStrings_Override_Dialog_Button(
             Cancel = "取消",
             Delete = "删除",
@@ -129,6 +132,7 @@ internal val ZhYumeStrings_Override: YumeStrings_Override = YumeStrings_Override
         Delete = "刪除設定",
         EditButton = "編輯",
         DeleteButton = "刪除",
+        Rename = "重新命名",
         Apply = "套用設定",
         ApplyButton = "套用",
     ),
@@ -151,6 +155,7 @@ internal val ZhYumeStrings_Override: YumeStrings_Override = YumeStrings_Override
         HttpError = "HTTP 請求失敗：%d",
         UnsupportedType = "僅支援 YAML 或 JS",
         EmptyJavaScript = "JS 檔案為空",
+        TooLarge = "匯入檔案過大（上限 %d MB）",
     ),
     Export = YumeStrings_Override_Export(
         Failed = "匯出失敗：%s",
@@ -165,9 +170,10 @@ internal val ZhYumeStrings_Override: YumeStrings_Override = YumeStrings_Override
         ),
         Delete = YumeStrings_Override_Dialog_Delete(
             Title = "刪除設定",
-            InUseMessage = "設定 %s 正在被訂閱使用，刪除後將解除綁定關係.確定要刪除嗎？此操作無法復原.",
-            Message = "確定要刪除設定 %s 嗎？此操作無法復原.",
+            InUseMessage = "設定 %s 正在被訂閱使用，刪除後將解除綁定關係.確定要刪除嗎？此操作無法復原",
+            Message = "確定要刪除設定 %s 嗎？此操作無法復原",
         ),
+        Rename = "重新命名",
         Button = YumeStrings_Override_Dialog_Button(
             Cancel = "取消",
             Delete = "刪除",
@@ -222,6 +228,7 @@ internal val EnYumeStrings_Override: YumeStrings_Override = YumeStrings_Override
         Delete = "Delete Config",
         EditButton = "Edit",
         DeleteButton = "Delete",
+        Rename = "Rename",
         Apply = "Apply Config",
         ApplyButton = "Apply",
     ),
@@ -244,6 +251,7 @@ internal val EnYumeStrings_Override: YumeStrings_Override = YumeStrings_Override
         HttpError = "HTTP request failed: %d",
         UnsupportedType = "Only YAML or JS is supported",
         EmptyJavaScript = "JS file is empty",
+        TooLarge = "Import file is too large (limit %d MB)",
     ),
     Export = YumeStrings_Override_Export(
         Failed = "Export failed: %s",
@@ -258,9 +266,10 @@ internal val EnYumeStrings_Override: YumeStrings_Override = YumeStrings_Override
         ),
         Delete = YumeStrings_Override_Dialog_Delete(
             Title = "Delete Config",
-            InUseMessage = "Config %s is being used by subscriptions. Deleting will unbind the relationship. Are you sure? This action cannot be undone.",
-            Message = "Are you sure you want to delete config %s? This action cannot be undone.",
+            InUseMessage = "Config %s is being used by subscriptions. Deleting will unbind the relationship. Are you sure? This action cannot be undone",
+            Message = "Are you sure you want to delete config %s? This action cannot be undone",
         ),
+        Rename = "Rename",
         Button = YumeStrings_Override_Dialog_Button(
             Cancel = "Cancel",
             Delete = "Delete",
@@ -315,6 +324,7 @@ internal val JaYumeStrings_Override: YumeStrings_Override = YumeStrings_Override
         Delete = "設定を削除",
         EditButton = "編集",
         DeleteButton = "削除",
+        Rename = "名前を変更",
         Apply = "設定を適用",
         ApplyButton = "適用",
     ),
@@ -337,6 +347,7 @@ internal val JaYumeStrings_Override: YumeStrings_Override = YumeStrings_Override
         HttpError = "HTTP 要求に失敗しました: %d",
         UnsupportedType = "YAML または JS のみ対応",
         EmptyJavaScript = "JS ファイルが空です",
+        TooLarge = "インポートするファイルが大きすぎます（上限 %d MB）",
     ),
     Export = YumeStrings_Override_Export(
         Failed = "書き出しに失敗しました: %s",
@@ -351,9 +362,10 @@ internal val JaYumeStrings_Override: YumeStrings_Override = YumeStrings_Override
         ),
         Delete = YumeStrings_Override_Dialog_Delete(
             Title = "設定を削除",
-            InUseMessage = "設定 %s は購読で使用中です.削除すると関連付けが解除されます.本当に削除しますか？この操作は元に戻せません.",
-            Message = "設定 %s を削除しますか？この操作は元に戻せません.",
+            InUseMessage = "設定 %s は購読で使用中です.削除すると関連付けが解除されます.本当に削除しますか？この操作は元に戻せません",
+            Message = "設定 %s を削除しますか？この操作は元に戻せません",
         ),
+        Rename = "名前を変更",
         Button = YumeStrings_Override_Dialog_Button(
             Cancel = "キャンセル",
             Delete = "削除",
@@ -408,6 +420,7 @@ internal val RuYumeStrings_Override: YumeStrings_Override = YumeStrings_Override
         Delete = "Удалить конфигурацию",
         EditButton = "Изменить",
         DeleteButton = "Удалить",
+        Rename = "Переименовать",
         Apply = "Применить конфигурацию",
         ApplyButton = "Применить",
     ),
@@ -430,6 +443,7 @@ internal val RuYumeStrings_Override: YumeStrings_Override = YumeStrings_Override
         HttpError = "HTTP-запрос не удался: %d",
         UnsupportedType = "Поддерживаются только YAML или JS",
         EmptyJavaScript = "JS-файл пуст",
+        TooLarge = "Файл импорта слишком большой (лимит %d MB)",
     ),
     Export = YumeStrings_Override_Export(
         Failed = "Экспорт не удался: %s",
@@ -444,9 +458,10 @@ internal val RuYumeStrings_Override: YumeStrings_Override = YumeStrings_Override
         ),
         Delete = YumeStrings_Override_Dialog_Delete(
             Title = "Удалить конфигурацию",
-            InUseMessage = "Конфигурация %s используется подписками. Удаление снимет привязку. Удалить? Это действие нельзя отменить.",
-            Message = "Удалить конфигурацию %s? Это действие нельзя отменить.",
+            InUseMessage = "Конфигурация %s используется подписками. Удаление снимет привязку. Удалить? Это действие нельзя отменить",
+            Message = "Удалить конфигурацию %s? Это действие нельзя отменить",
         ),
+        Rename = "Переименовать",
         Button = YumeStrings_Override_Dialog_Button(
             Cancel = "Отмена",
             Delete = "Удалить",

@@ -29,13 +29,15 @@ import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewModelScope
 import com.github.yumeyucca.yumebox.common.util.stateInWhileSubscribed
-import com.github.yumeyucca.yumebox.core.presentation.AndroidContractStateViewModel
-import com.github.yumeyucca.yumebox.core.presentation.LoadableState
+import com.github.yumeyucca.yumebox.presentation.base.AndroidContractStateViewModel
+import com.github.yumeyucca.yumebox.presentation.base.LoadableState
 import com.github.yumeyucca.yumebox.data.controller.AccessControlController
+import com.github.yumeyucca.yumebox.data.model.AccessControlImportStrategy
 import com.github.yumeyucca.yumebox.data.model.AccessControlMode
 import com.github.yumeyucca.yumebox.data.model.AccessControlSortMode
 import com.github.yumeyucca.yumebox.data.store.NetworkSettingsStore
 import com.github.yumeyucca.yumebox.runtime.service.root.RootPackageShell
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
@@ -57,6 +59,7 @@ class AccessControlViewModel(
             showSystemApps = settings.accessControlShowSystemApps.value,
             sortMode = settings.accessControlSortMode.value,
             selectedFirst = settings.accessControlSelectedFirst.value,
+            importStrategy = settings.accessControlImportStrategy.value,
         ),
     ) {
     data class AppInfo(
@@ -80,6 +83,7 @@ class AccessControlViewModel(
         val showSystemApps: Boolean = false,
         val sortMode: AccessControlSortMode = AccessControlSortMode.LABEL,
         val selectedFirst: Boolean = true,
+        val importStrategy: AccessControlImportStrategy = AccessControlImportStrategy.MERGE,
         val needsMiuiPermission: Boolean = false,
         override val message: String? = null,
         override val error: String? = null,
@@ -114,36 +118,32 @@ class AccessControlViewModel(
     }
 
     init {
-        checkAndLoad()
+        checkInstalledAppsPermission()
+        loadApps()
     }
 
-    private fun checkAndLoad() {
+    /** Ask for MIUI/HyperOS's extra app-list permission as soon as the screen is opened. */
+    private fun checkInstalledAppsPermission() {
         val context = getApplication<Application>()
-        val permission = "com.android.permission.GET_INSTALLED_APPS"
+        val supported =
+            runCatching {
+                context.packageManager
+                    .getPermissionInfo(GET_INSTALLED_APPS_PERMISSION, 0)
+                    .packageName == "com.lbe.security.miui"
+            }
+                .getOrDefault(false)
+        if (!supported) return
 
-        if (RootPackageShell.hasRootAccess()) {
-            loadApps()
-            return
-        }
-
-        val hasPermission =
-            ContextCompat.checkSelfPermission(context, permission) ==
+        val granted =
+            ContextCompat.checkSelfPermission(context, GET_INSTALLED_APPS_PERMISSION) ==
                     PackageManager.PERMISSION_GRANTED
-        if (hasPermission) {
-            loadApps()
-            return
-        }
-
-        val isMiui = runCatching {
-            val permissionInfo = context.packageManager.getPermissionInfo(permission, 0)
-            permissionInfo.packageName == "com.lbe.security.miui"
-        }
-            .getOrElse { false }
-
-        if (isMiui) {
-            _uiState.update { it.copy(needsMiuiPermission = true, isLoading = false) }
+        if (granted) {
+            if (_uiState.value.needsMiuiPermission) {
+                _uiState.update { it.copy(needsMiuiPermission = false) }
+                loadApps()
+            }
         } else {
-            loadApps()
+            _uiState.update { it.copy(needsMiuiPermission = true) }
         }
     }
 
@@ -164,11 +164,9 @@ class AccessControlViewModel(
             val apps = runCatching {
                 withContext(Dispatchers.IO) { loadInstalledApps() }
             }
-                .getOrElse {
-                    _uiState.update { state ->
-                        state.copy(isLoading = false, needsMiuiPermission = true)
-                    }
-                    return@launch
+                .getOrElse { error ->
+                    if (error is CancellationException) throw error
+                    emptyList()
                 }
 
             _uiState.update { state ->
@@ -187,6 +185,7 @@ class AccessControlViewModel(
      * activity-scoped by the Compose Koin owner, so navigating away does not recreate it.
      */
     fun refreshSelection() {
+        checkInstalledAppsPermission()
         val selectedPackages = settings.accessControlPackages.value
         _uiState.update { state ->
             state.copy(
@@ -211,8 +210,18 @@ class AccessControlViewModel(
                 }
             }
 
-        return packages
-            .filter { it.packageName != selfPackageName }
+        val visiblePackages = packages.filter { it.packageName != selfPackageName }
+        // HyperOS returns an empty (or system-only) list instead of throwing when the app-list
+        // permission is missing, so the SecurityException fallback above never runs. Use root
+        // whenever no third-party package is visible.
+        val resolvedPackages =
+            if (visiblePackages.any { (it.flags and ApplicationInfo.FLAG_SYSTEM) == 0 }) {
+                visiblePackages
+            } else {
+                loadInstalledAppsFromRoot(pm, selfPackageName)
+            }
+
+        return resolvedPackages
             .map { appInfo ->
                 val pkgInfo = runCatching { pm.getPackageInfo(appInfo.packageName, 0) }.getOrNull()
                 AppInfo(
@@ -290,6 +299,11 @@ class AccessControlViewModel(
         _uiState.update { state -> state.copy(selectedFirst = selectedFirst) }
     }
 
+    fun onImportStrategyChange(strategy: AccessControlImportStrategy) {
+        settings.accessControlImportStrategy.set(strategy)
+        _uiState.update { state -> state.copy(importStrategy = strategy) }
+    }
+
     fun onShowSystemAppsChange(show: Boolean) {
         settings.accessControlShowSystemApps.set(show)
         _uiState.update { state -> state.copy(showSystemApps = show) }
@@ -360,7 +374,8 @@ class AccessControlViewModel(
                     }
                 )
             }
-                .getOrElse {
+                .getOrElse { error ->
+                    if (error is CancellationException) throw error
                     _uiState.update { state -> state.copy(isLoading = false) }
                     return@launch
                 }
@@ -388,7 +403,13 @@ class AccessControlViewModel(
             packages.intersect(_uiState.value.apps.mapTo(linkedSetOf()) { it.packageName })
 
         _uiState.update { state ->
-            state.copy(selectedPackages = state.selectedPackages + validPackages)
+            state.copy(
+                selectedPackages =
+                    when (state.importStrategy) {
+                        AccessControlImportStrategy.MERGE -> state.selectedPackages + validPackages
+                        AccessControlImportStrategy.OVERWRITE -> validPackages
+                    }
+            )
         }
 
         persistSelectionAndApply()

@@ -27,7 +27,7 @@ fun packageApplication(arguments: Array<String>) {
             else -> error("Unknown packaging argument: $argument")
         }
     }
-    val accepted = setOf("module", "build-type", "geo.bundle", "build.number", "build.hash", "build.branch", "apk.output.prefix", "apk.output.tail", "apk.output.channel", "core.branch", "core.commit", "update.channel", "update.tag", "update.metaAssetName", "api.version", "api.group", "api.githubRepository")
+    val accepted = setOf("module", "build-type", "geo.bundle", "build.number", "build.hash", "build.branch", "apk.output.prefix", "apk.output.tail", "apk.output.channel", "core.branch", "core.commit", "update.channel", "update.tag", "update.metaAssetName", "update.baseUrl", "api.version", "api.group", "api.githubRepository")
     require(options.keys.all { it in accepted }) { "Unsupported packaging options: ${options.keys - accepted}" }
     val root = generateSequence(File(System.getProperty("user.dir")).canonicalFile) { it.parentFile }
         .firstOrNull { it.resolve("product.properties").isFile && it.resolve("project.yaml").isFile }
@@ -87,7 +87,10 @@ private fun packageLocked(root: File, state: File, options: Map<String, String>,
     }
     val prepared = workspace.resolve("prepared.apk")
     rewriteApk(rewritten, prepared, additions) { name ->
-        name.startsWith("META-INF/") || name.endsWith(".kotlin_module") || name.endsWith(".kotlin_builtins") ||
+        // ServiceLoader metadata is runtime behavior (for example Sketch's HTTP and image
+        // providers); only strip the remaining dependency/signature metadata.
+        (name.startsWith("META-INF/") && !name.startsWith("META-INF/services/")) ||
+            name.endsWith(".kotlin_module") || name.endsWith(".kotlin_builtins") ||
             (name.startsWith("lib/") && name.substringAfterLast('/').startsWith("libjavet") || name.endsWith("BundleMRS.7z"))
     }
     val signing = signingIdentity(root, tools, variant, "--allow-unsigned" in flags)
@@ -113,7 +116,7 @@ private fun packageLocked(root: File, state: File, options: Map<String, String>,
     output.resolveSibling(output.name + ".json").writeText(buildJsonObject {
         put("module", module); put("variant", variant); put("geo", plan.geoSegment)
         put("applicationId", applicationId); put("versionCode", plan.versionCode); put("versionName", plan.versionName)
-        put("signed", signing != null); put("sha256", sha256(output)); put("toolchain", "0.13.0")
+        put("signed", signing != null); put("sha256", sha256(output)); put("toolchain", launcherToolchainVersion(root))
     }.toString())
     println("Verified APK: ${output.path}")
 }

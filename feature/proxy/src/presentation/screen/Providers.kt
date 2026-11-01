@@ -22,19 +22,23 @@
 
 package com.github.yumeyucca.yumebox.presentation.screen
 
-import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import com.github.yumeyucca.yumebox.common.util.formatDateTime
 import com.github.yumeyucca.yumebox.common.util.toast
 import com.github.yumeyucca.yumebox.core.model.Provider
 import com.github.yumeyucca.yumebox.presentation.component.*
@@ -43,21 +47,18 @@ import com.github.yumeyucca.yumebox.presentation.theme.UiDp
 import com.github.yumeyucca.yumebox.presentation.viewmodel.ProvidersViewModel
 import org.koin.androidx.compose.koinViewModel
 import com.github.yumeyucca.yumebox.core.locale.YumeTxt
-import top.yukonga.miuix.kmp.basic.DropdownImpl
+import com.github.yumeyucca.yumebox.presentation.viewmodel.providerKey
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
-import top.yukonga.miuix.kmp.basic.ListPopupColumn
-import top.yukonga.miuix.kmp.basic.ListPopupDefaults
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
-import top.yukonga.miuix.kmp.basic.PopupPositionProvider
-import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.ScrollBehavior
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.glass.glassPopupAnchor
+import top.yukonga.miuix.kmp.glass.glassPopupAnchorContent
+import top.yukonga.miuix.kmp.glass.rememberGlassPopupAnchor
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Edit
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.window.WindowListPopup
-import java.text.SimpleDateFormat
-import java.util.*
 
 private fun Provider.VehicleType.localizedDisplayName(): String =
     when (this) {
@@ -72,12 +73,31 @@ private data class ProviderSection(
     val providers: List<Provider>,
 )
 
+@OptIn(ExperimentalFoundationApi::class)
 @Suppress("KotlinConstantConditions")
 @Composable
-fun ProvidersContent(navigator: Navigator) {
+fun ProvidersContent(
+    contentPadding: PaddingValues = PaddingValues(),
+    scrollBehaviorOverride: ScrollBehavior? = null,
+    listState: LazyListState = rememberLazyListState(),
+) {
     val viewModel = koinViewModel<ProvidersViewModel>()
-    val scrollBehavior = MiuixScrollBehavior()
+    val scrollBehavior = scrollBehaviorOverride ?: MiuixScrollBehavior()
     val context = LocalContext.current
+    // One launcher for the whole list; a launcher per card registers N activity results on entry.
+    var pendingUploadProvider by remember { mutableStateOf<Provider?>(null) }
+    val filePicker =
+        rememberLauncherForActivityResult(contract = ActivityResultContracts.GetContent()) { uri ->
+            val provider = pendingUploadProvider
+            pendingUploadProvider = null
+            if (uri != null && provider != null) {
+                viewModel.uploadProviderFile(provider, uri)
+            }
+        }
+    val requestUpload: (Provider) -> Unit = { provider ->
+        pendingUploadProvider = provider
+        filePicker.launch("*/*")
+    }
 
     val providers by viewModel.providers.collectAsState()
     val isRunning by viewModel.isRunning.collectAsState()
@@ -128,44 +148,52 @@ fun ProvidersContent(navigator: Navigator) {
             }
         }
 
-    Scaffold(
-        topBar = {
-            TopBar(
-                title = YumeTxt.Providers.Title,
-                scrollBehavior = scrollBehavior,
-            )
+    var selectedSectionIndex by rememberSaveable { mutableStateOf(0) }
+
+    if (!isRunning) {
+        CenteredText(
+            firstLine = YumeTxt.Providers.Empty.NotRunning,
+            secondLine = YumeTxt.Providers.Empty.NotRunningHint,
+        )
+    } else if (providers.isEmpty() && !uiState.isLoading) {
+        CenteredText(
+            firstLine = YumeTxt.Providers.Empty.NoProviders,
+            secondLine = YumeTxt.Providers.Empty.NoProvidersHint,
+        )
+    } else {
+        val showProviderTabs = sections.size >= 2
+        val activeSectionIndex =
+            if (showProviderTabs) selectedSectionIndex.coerceIn(0, sections.lastIndex) else 0
+        // A provider refresh can drop a section; keep the stored index inside the list instead of
+        // leaving a value that only looks right while it is being read.
+        LaunchedEffect(sections.size, activeSectionIndex) {
+            if (showProviderTabs && selectedSectionIndex != activeSectionIndex) {
+                selectedSectionIndex = activeSectionIndex
+            }
         }
-    ) { innerPadding ->
-        if (!isRunning) {
-            CenteredText(
-                firstLine = YumeTxt.Providers.Empty.NotRunning,
-                secondLine = YumeTxt.Providers.Empty.NotRunningHint,
-                showEmptyResourceIllustration = true,
-            )
-        } else if (providers.isEmpty() && !uiState.isLoading) {
-            CenteredText(
-                firstLine = YumeTxt.Providers.Empty.NoProviders,
-                secondLine = YumeTxt.Providers.Empty.NoProvidersHint,
-                showEmptyResourceIllustration = true,
-            )
-        } else {
-            val mainLikePadding = rememberStandalonePageMainPadding()
-            ScreenLazyColumn(
-                scrollBehavior = scrollBehavior,
-                innerPadding = combinePaddingValues(innerPadding, mainLikePadding),
-            ) {
-                sections.forEach { section ->
-                    providerSection(
-                        section = section,
-                        isUpdating = { providerKey ->
-                            uiState.updatingProviders.contains(providerKey)
-                        },
-                        onUpdate = { provider -> viewModel.updateProvider(provider) },
-                        onUpload = { provider, uri ->
-                            viewModel.uploadProviderFile(context, provider, uri)
-                        },
-                    )
-                }
+        // The tab row already names the visible section, so that section drops its own header.
+        val visibleSections = if (showProviderTabs) listOf(sections[activeSectionIndex]) else sections
+        ScreenLazyColumn(
+            scrollBehavior = scrollBehavior,
+            innerPadding = contentPadding,
+            lazyListState = listState,
+        ) {
+            if (showProviderTabs) {
+                stickySegmentedTabs(
+                    key = "__provider_tabs__",
+                    tabs = sections.map { it.title },
+                    selectedTabIndex = activeSectionIndex,
+                    onTabSelected = { selectedSectionIndex = it },
+                )
+            }
+            visibleSections.forEach { section ->
+                providerSection(
+                    section = section,
+                    showTitle = !showProviderTabs,
+                    isUpdating = { key -> uiState.updatingProviders.contains(key) },
+                    onUpdate = { provider -> viewModel.updateProvider(provider) },
+                    onUpload = requestUpload,
+                )
             }
         }
     }
@@ -177,17 +205,13 @@ private fun ProviderCard(
     provider: Provider,
     isUpdating: Boolean,
     onUpdate: () -> Unit,
-    onUpload: (Uri) -> Unit,
+    onUpload: () -> Unit,
 ) {
     val showPopup = remember { mutableStateOf(false) }
     val colorScheme = MiuixTheme.colorScheme
     val updateBg = remember(colorScheme) { colorScheme.primary.copy(alpha = 0.1f) }
     val updateTint = remember(colorScheme) { colorScheme.primary }
-
-    val filePicker =
-        rememberLauncherForActivityResult(contract = ActivityResultContracts.GetContent()) { uri: Uri? ->
-            uri?.let { onUpload(it) }
-        }
+    val formattedUpdatedAt = remember(provider.updatedAt) { formatTimestamp(provider.updatedAt) }
 
     AppCard(modifier = Modifier.padding(vertical = UiDp.dp4)) {
         Row(
@@ -221,7 +245,7 @@ private fun ProviderCard(
                             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                         )
                         Text(
-                            text = formatTimestamp(provider.updatedAt),
+                            text = formattedUpdatedAt,
                             style = MiuixTheme.textStyles.body2,
                             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                         )
@@ -241,18 +265,27 @@ private fun ProviderCard(
                 provider.vehicleType == Provider.VehicleType.File && provider.path.isNotBlank()
 
             if (canUpdate || canUpload) {
+                // Update and upload share one control: a provider that offers only one of them
+                // fires it straight away, one that offers both grows this menu out of the button.
+                val hasActionMenu = canUpdate && canUpload
+                val actionAnchor = rememberGlassPopupAnchor()
                 Box {
                     IconButton(
+                        modifier =
+                            Modifier.glassPopupAnchor(
+                                anchor = actionAnchor,
+                                cornerRadius = UiDp.dp35 / 2,
+                                floating = false,
+                            ),
                         backgroundColor = updateBg,
                         minHeight = UiDp.dp35,
                         minWidth = UiDp.dp35,
                         enabled = !isUpdating,
                         onClick = {
-                            // Single action: fire it; mixed actions: open the menu.
                             when {
-                                canUpdate && !canUpload -> onUpdate()
-                                !canUpdate && canUpload -> filePicker.launch("*/*")
-                                else -> showPopup.value = true
+                                hasActionMenu -> showPopup.value = true
+                                canUpdate -> onUpdate()
+                                else -> onUpload()
                             }
                         },
                     ) {
@@ -262,7 +295,10 @@ private fun ProviderCard(
                             horizontalArrangement = Arrangement.spacedBy(UiDp.dp2),
                         ) {
                             Icon(
-                                modifier = Modifier.size(UiDp.dp20),
+                                modifier =
+                                    Modifier
+                                        .size(UiDp.dp20)
+                                        .glassPopupAnchorContent(actionAnchor),
                                 imageVector = MiuixIcons.Edit,
                                 tint = updateTint,
                                 contentDescription = YumeTxt.Providers.Action.Operation,
@@ -270,10 +306,12 @@ private fun ProviderCard(
                             Text(
                                 modifier = Modifier.padding(end = UiDp.dp3),
                                 text =
-                                    when {
-                                        canUpdate && canUpload -> YumeTxt.Providers.Action.Operation
-                                        canUpdate -> YumeTxt.Providers.Action.Update
-                                        else -> YumeTxt.Providers.Action.Upload
+                                    if (hasActionMenu) {
+                                        YumeTxt.Providers.Action.Operation
+                                    } else if (canUpdate) {
+                                        YumeTxt.Providers.Action.Update
+                                    } else {
+                                        YumeTxt.Providers.Action.Upload
                                     },
                                 color = updateTint,
                                 fontWeight = FontWeight.Medium,
@@ -282,33 +320,27 @@ private fun ProviderCard(
                         }
                     }
 
-                    if (canUpdate && canUpload) {
-                        val popupItems =
-                            listOf(YumeTxt.Providers.Action.Update, YumeTxt.Providers.Action.Upload)
-
-                        WindowListPopup(
+                    if (hasActionMenu) {
+                        GlassPopupHost(
                             show = showPopup.value,
-                            popupPositionProvider = ListPopupDefaults.DropdownPositionProvider,
-                            alignment = PopupPositionProvider.Align.End,
                             onDismissRequest = { showPopup.value = false },
+                            anchor = actionAnchor,
+                            anchorContent = { GlassTopActionAnchorIcon(MiuixIcons.Edit) },
                         ) {
-                            ListPopupColumn {
-                                popupItems.forEachIndexed { index, item ->
-                                    DropdownImpl(
-                                        text = item,
-                                        optionSize = popupItems.size,
-                                        isSelected = false,
-                                        onSelectedIndexChange = {
-                                            showPopup.value = false
-                                            when (index) {
-                                                0 -> onUpdate()
-                                                1 -> filePicker.launch("*/*")
-                                            }
-                                        },
-                                        index = index,
-                                    )
-                                }
-                            }
+                            GlassMenuItem(
+                                text = YumeTxt.Providers.Action.Update,
+                                onClick = {
+                                    showPopup.value = false
+                                    onUpdate()
+                                },
+                            )
+                            GlassMenuItem(
+                                text = YumeTxt.Providers.Action.Upload,
+                                onClick = {
+                                    showPopup.value = false
+                                    onUpload()
+                                },
+                            )
                         }
                     }
                 }
@@ -321,23 +353,24 @@ private fun LazyListScope.providerSection(
     section: ProviderSection,
     isUpdating: (String) -> Boolean,
     onUpdate: (Provider) -> Unit,
-    onUpload: (Provider, Uri) -> Unit,
+    onUpload: (Provider) -> Unit,
+    showTitle: Boolean = true,
 ) {
-    item(key = "title_${section.title}") { Title(section.title) }
+    if (showTitle) {
+        item(key = "title_${section.title}") { Title(section.title) }
+    }
     items(
         items = section.providers,
-        key = { provider -> "${provider.type}_${provider.name}" },
+        key = { provider -> providerKey(provider) },
         contentType = { "ProviderCard" },
     ) { provider ->
-        val providerKey = "${provider.type}_${provider.name}"
         ProviderCard(
             provider = provider,
-            isUpdating = isUpdating(providerKey),
+            isUpdating = isUpdating(providerKey(provider)),
             onUpdate = { onUpdate(provider) },
-            onUpload = { uri -> onUpload(provider, uri) },
+            onUpload = { onUpload(provider) },
         )
     }
 }
 
-private fun formatTimestamp(ts: Long): String =
-    SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date(ts))
+private fun formatTimestamp(ts: Long): String = formatDateTime(ts, "MM-dd HH:mm")

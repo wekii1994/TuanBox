@@ -20,7 +20,9 @@
 
 package com.github.yumeyucca.yumebox.di
 
+import com.github.yumeyucca.yumebox.feature.override.di.featureOverrideModules
 import com.github.yumeyucca.yumebox.screen.home.HomeViewModel
+import com.github.yumeyucca.yumebox.update.AppUpdateViewModel
 import com.github.yumeyucca.yumebox.screen.log.LogViewModel
 import com.github.yumeyucca.yumebox.screen.profiles.ProfilesViewModel
 import com.github.yumeyucca.yumebox.screen.rules.RulesViewModel
@@ -61,7 +63,8 @@ val appIntegrationModule = module {
 
 val appViewModelModule = module {
     viewModel { AppSettingsViewModel(androidApplication(), get(), get(), get()) }
-    viewModel { HomeViewModel(androidApplication(), get(), get(), get(), get(), get()) }
+    viewModel { HomeViewModel(androidApplication(), get(), get(), get()) }
+    viewModel { AppUpdateViewModel(androidApplication(), get(), get()) }
     viewModel { ProfilesViewModel(androidApplication(), get(), get()) }
     viewModel { NetworkSettingsViewModel(androidApplication(), get(), get()) }
     viewModel { RemoteControllerViewModel(androidApplication(), get(), get()) }
@@ -73,9 +76,13 @@ val appViewModelModule = module {
 }
 
 val appModule: List<Module> =
-    coreDiModules +
-            listOf(appIntegrationModule, appViewModelModule) +
-            featureSubStoreModules +
-            featureProxyModules +
-            featureOverrideModules +
-            featureMetaModules
+    listOf(
+        appFoundationModule,
+        appDataRuntimeModule,
+        appIntegrationModule,
+        appViewModelModule,
+    ) +
+        featureSubStoreModules +
+        featureProxyModules +
+        featureOverrideModules +
+        featureMetaModules

@@ -23,87 +23,16 @@
 package com.github.yumeyucca.yumebox.screen.profiles
 
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import com.github.yumeyucca.yumebox.presentation.component.AppDialog
-import com.github.yumeyucca.yumebox.presentation.theme.UiDp
-import com.github.yumeyucca.yumebox.core.locale.YumeTxt
-import top.yukonga.miuix.kmp.basic.Button
-import top.yukonga.miuix.kmp.basic.ButtonDefaults
-import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.theme.MiuixTheme
 import java.io.File
 
-internal fun openProfileConfigPreview(
-    targetFile: File,
-    missingMessage: String,
-    editable: Boolean,
-    onReadFailed: (String) -> Unit,
-    onPreviewPrepared: (String, (suspend (String) -> Unit)?) -> Unit,
-) {
-    if (!targetFile.exists()) {
-        onReadFailed(missingMessage)
-        return
-    }
-
-    val configContent = runCatching {
-        targetFile.readText()
-    }
-        .getOrElse {
-            onReadFailed(it.message ?: "Failed to read profile")
-            return
+/**
+ * Reads a profile's config file for the editor, or reports why it cannot be read — [missingMessage]
+ * when the file is gone, the I/O error otherwise. Blocking: call it from an IO dispatcher.
+ */
+internal fun readProfileConfigFile(targetFile: File, missingMessage: String): Result<String> {
+    if (!targetFile.exists()) return Result.failure(IllegalStateException(missingMessage))
+    return runCatching { targetFile.readText() }
+        .recoverCatching { error ->
+            throw IllegalStateException(error.message ?: "Failed to read profile", error)
         }
-
-    val saveCallback =
-        if (editable) {
-            { updatedContent: String ->
-                runCatching { targetFile.writeText(updatedContent) }
-                    .getOrElse {
-                        throw IllegalStateException(
-                            it.message ?: YumeTxt.ProfilesPage.SettingsDialog.SaveFailed,
-                            it,
-                        )
-                    }
-            }
-        } else {
-            null
-        }
-
-    onPreviewPrepared(configContent, saveCallback)
-}
-
-@Composable
-internal fun ProfileEditOptionsDialog(
-    show: Boolean,
-    onOpenConfig: () -> Unit,
-    onEditSettings: () -> Unit,
-    onDismiss: () -> Unit,
-    onDismissFinished: () -> Unit,
-) {
-    AppDialog(
-        show = show,
-        title = YumeTxt.ProfilesPage.SettingsDialog.EditProfile,
-        onDismissRequest = onDismiss,
-        onDismissFinished = onDismissFinished,
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(UiDp.dp12)) {
-            Button(modifier = Modifier.fillMaxWidth(), onClick = onOpenConfig) {
-                Text(YumeTxt.ProfilesPage.SettingsDialog.OpenConfig)
-            }
-
-            Button(
-                modifier = Modifier.fillMaxWidth(),
-                onClick = onEditSettings,
-                colors = ButtonDefaults.buttonColorsPrimary(),
-            ) {
-                Text(
-                    text = YumeTxt.ProfilesPage.SettingsDialog.EditSettings,
-                    color = MiuixTheme.colorScheme.onPrimary,
-                )
-            }
-        }
-    }
 }

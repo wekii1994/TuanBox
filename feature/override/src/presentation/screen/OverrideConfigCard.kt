@@ -18,10 +18,12 @@
  *
  */
 
-package com.github.yumeyucca.yumebox.presentation.screen
+package com.github.yumeyucca.yumebox.feature.override.presentation.screen
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.runtime.Composable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -29,52 +31,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
 import com.github.yumeyucca.yumebox.data.model.OverrideConfig
-import com.github.yumeyucca.yumebox.presentation.component.AppCard
-import com.github.yumeyucca.yumebox.presentation.component.OverrideCardActionIconButton
-import com.github.yumeyucca.yumebox.presentation.component.OverrideStatusBadge
+import com.github.yumeyucca.yumebox.presentation.component.*
 import com.github.yumeyucca.yumebox.presentation.icon.Yume
 import com.github.yumeyucca.yumebox.presentation.icon.yume.*
+import com.github.yumeyucca.yumebox.presentation.theme.AppTheme
 import com.github.yumeyucca.yumebox.presentation.theme.Spacing
 import com.github.yumeyucca.yumebox.presentation.theme.UiDp
-import sh.calvin.reorderable.ReorderableCollectionItemScope
+import io.github.yumeyucca.lucide.Lucide
+import io.github.yumeyucca.lucide.lucide.TextCursorInput
 import com.github.yumeyucca.yumebox.core.locale.YumeTxt
-import top.yukonga.miuix.kmp.basic.HorizontalDivider
-import top.yukonga.miuix.kmp.basic.Icon
-import top.yukonga.miuix.kmp.basic.IconButton
-import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.*
+import top.yukonga.miuix.kmp.glass.*
 import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
 
 private val overrideConfigItemGap = Spacing().space12
-
-@Composable
-internal fun ReorderableCollectionItemScope.OverrideConfigCard(
-    config: OverrideConfig,
-    isDragging: Boolean,
-    isInUse: Boolean,
-    isBuiltIn: Boolean,
-    onApply: () -> Unit,
-    onExport: () -> Unit,
-    onEdit: () -> Unit,
-    onDelete: (() -> Unit)?,
-    enableDrag: Boolean,
-) {
-    OverrideConfigCardContent(
-        config = config,
-        isDragging = isDragging,
-        isInUse = isInUse,
-        isBuiltIn = isBuiltIn,
-        onApply = onApply,
-        onExport = onExport,
-        onEdit = onEdit,
-        onDelete = onDelete,
-        modifier =
-            if (enableDrag) {
-                Modifier.longPressDraggableHandle()
-            } else {
-                Modifier
-            },
-    )
-}
 
 @Composable
 internal fun OverrideConfigCard(
@@ -82,39 +52,15 @@ internal fun OverrideConfigCard(
     isDragging: Boolean,
     isInUse: Boolean,
     isBuiltIn: Boolean,
-    onApply: () -> Unit,
     onExport: () -> Unit,
     onEdit: () -> Unit,
+    onRename: () -> Unit,
     onDelete: (() -> Unit)?,
-    enableDrag: Boolean,
+    modifier: Modifier = Modifier,
 ) {
-    OverrideConfigCardContent(
-        config = config,
-        isDragging = isDragging,
-        isInUse = isInUse,
-        isBuiltIn = isBuiltIn,
-        onApply = onApply,
-        onExport = onExport,
-        onEdit = onEdit,
-        onDelete = onDelete,
-        modifier = Modifier,
-    )
-    @Suppress("UNUSED_EXPRESSION") enableDrag
-}
-
-@Composable
-private fun OverrideConfigCardContent(
-    config: OverrideConfig,
-    isDragging: Boolean,
-    isInUse: Boolean,
-    isBuiltIn: Boolean,
-    onApply: () -> Unit,
-    onExport: () -> Unit,
-    onEdit: () -> Unit,
-    onDelete: (() -> Unit)?,
-    modifier: Modifier,
-) {
-    val accentTintColor = colorScheme.primary
+    var actionsOpen by remember(config.id) { mutableStateOf(false) }
+    var actionsMounted by remember(config.id) { mutableStateOf(false) }
+    val actionsMenuAnchor = rememberGlassPopupAnchor()
 
     AppCard(
         modifier =
@@ -124,148 +70,162 @@ private fun OverrideConfigCardContent(
                 .then(modifier)
                 .alpha(if (isDragging) 0.92f else 1f),
         insideMargin = PaddingValues(UiDp.dp16),
+        onClick = {
+            actionsMounted = true
+            actionsOpen = true
+        },
     ) {
-        Column {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(UiDp.dp12),
-                verticalAlignment = Alignment.Top,
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(UiDp.dp12),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(UiDp.dp8),
             ) {
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(UiDp.dp8),
-                ) {
-                    Text(
-                        text = config.name,
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight(550),
-                        color = colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = config.contentType.label,
-                        fontSize = 14.sp,
-                        lineHeight = 20.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = colorScheme.onSurfaceVariantSummary,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                if (isBuiltIn) {
-                    OverrideBuiltInBadge()
-                } else {
-                    OverrideConfigStateIndicator(inUse = isInUse)
-                }
+                Text(
+                    text = config.name,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight(550),
+                    color = colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = config.contentType.displayName,
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = colorScheme.onSurfaceVariantSummary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
-
-            HorizontalDivider(
-                modifier = Modifier.padding(vertical = UiDp.dp12),
-                thickness = UiDp.dp0_5,
-                color = colorScheme.outline.copy(alpha = 0.5f),
-            )
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Row(horizontalArrangement = Arrangement.spacedBy(UiDp.dp8)) {
-                    OverrideCardActionIconButton(
-                        imageVector = Yume.Share,
-                        contentDescription = YumeTxt.Override.Card.Export,
-                        onClick = onExport,
-                    )
-                    if (onDelete != null) {
-                        OverrideCardActionIconButton(
-                            imageVector = Yume.Delete,
-                            contentDescription = YumeTxt.Override.Card.Delete,
-                            onClick = onDelete,
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.weight(1f))
-
-                IconButton(
-                    modifier = Modifier.padding(end = UiDp.dp8),
-                    backgroundColor = colorScheme.secondaryContainer.copy(alpha = 0.78f),
-                    minHeight = UiDp.dp35,
-                    minWidth = UiDp.dp35,
-                    onClick = onApply,
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = UiDp.dp10),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(UiDp.dp2),
-                    ) {
-                        Icon(
-                            modifier = Modifier.size(UiDp.dp20),
-                            imageVector = Yume.Diff,
-                            tint = colorScheme.onSurface.copy(alpha = 0.85f),
-                            contentDescription = YumeTxt.Override.Card.Apply,
-                        )
-                        Text(
-                            modifier = Modifier.padding(end = UiDp.dp3),
-                            text = YumeTxt.Override.Card.ApplyButton,
-                            color = colorScheme.onSurface.copy(alpha = 0.85f),
-                            fontWeight = FontWeight.Medium,
-                            fontSize = 15.sp,
-                        )
-                    }
-                }
-
-                IconButton(
-                    backgroundColor = colorScheme.primary.copy(alpha = 0.1f),
-                    minHeight = UiDp.dp35,
-                    minWidth = UiDp.dp35,
-                    onClick = onEdit,
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = UiDp.dp10),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(UiDp.dp2),
-                    ) {
-                        Icon(
-                            modifier = Modifier.size(UiDp.dp20),
-                            imageVector = Yume.Edit,
-                            tint = accentTintColor,
-                            contentDescription = YumeTxt.Override.Card.Edit,
-                        )
-                        Text(
-                            modifier = Modifier.padding(end = UiDp.dp3),
-                            text = YumeTxt.Override.Card.EditButton,
-                            color = accentTintColor,
-                            fontWeight = FontWeight.Medium,
-                            fontSize = 15.sp,
-                        )
-                    }
-                }
+            Box(
+                modifier =
+                    Modifier.glassPopupAnchor(
+                        anchor = actionsMenuAnchor,
+                        cornerRadius = AppTheme.sizes.statusCapsuleHeight / 2,
+                        floating = true,
+                    ),
+            ) {
+                OverrideConfigStatusBadge(isBuiltIn = isBuiltIn, isInUse = isInUse)
             }
         }
+    }
+
+    if (actionsMounted) {
+        OverrideConfigActionsMenu(
+            show = actionsOpen,
+            isInUse = isInUse,
+            isBuiltIn = isBuiltIn,
+            onDismiss = { actionsOpen = false },
+            onDismissFinished = { actionsMounted = false },
+            anchor = actionsMenuAnchor,
+            onEdit = onEdit,
+            onRename = onRename,
+            onExport = onExport,
+            onDelete = onDelete,
+        )
     }
 }
 
 @Composable
-private fun OverrideConfigStateIndicator(inUse: Boolean) {
-    val tint = if (inUse) colorScheme.primary else colorScheme.onSurfaceVariantSummary
-    OverrideStatusBadge(
-        imageVector = if (inUse) Yume.ShieldCheck else Yume.ShieldMinus,
-        contentDescription =
-            if (inUse) YumeTxt.Override.Status.InUse else YumeTxt.Override.Status.NotInUse,
-        tint = tint,
-        backgroundColor =
-            if (inUse) {
-                colorScheme.primary.copy(alpha = 0.1f)
-            } else {
-                colorScheme.secondaryContainer.copy(alpha = 0.78f)
+private fun OverrideConfigActionsMenu(
+    show: Boolean,
+    isInUse: Boolean,
+    isBuiltIn: Boolean,
+    onDismiss: () -> Unit,
+    onDismissFinished: () -> Unit,
+    anchor: GlassPopupAnchor,
+    onEdit: () -> Unit,
+    onRename: () -> Unit,
+    onExport: () -> Unit,
+    onDelete: (() -> Unit)?,
+) {
+    GlassPopupHost(
+        show = show,
+        onDismissRequest = onDismiss,
+        anchor = anchor,
+        anchorContent = { OverrideConfigStatusBadge(isBuiltIn = isBuiltIn, isInUse = isInUse) },
+        onDismissFinished = onDismissFinished,
+    ) {
+        GlassMenuItem(
+            text = YumeTxt.Override.Card.Edit,
+            icon = Yume.Edit,
+            onClick = {
+                onDismiss()
+                onEdit()
             },
-    )
+        )
+        if (!isBuiltIn) {
+            GlassMenuItem(
+                text = YumeTxt.Override.Card.Rename,
+                icon = Lucide.TextCursorInput,
+                onClick = {
+                    onDismiss()
+                    onRename()
+                },
+            )
+        }
+        GlassMenuItem(
+            text = YumeTxt.Override.Card.Export,
+            icon = Yume.Share,
+            onClick = {
+                onDismiss()
+                onExport()
+            },
+        )
+        if (onDelete != null) {
+            GlassMenuItem(
+                text = YumeTxt.Override.Card.Delete,
+                icon = Yume.Delete,
+                contentColor = AppTheme.colors.status.destructive,
+                onClick = {
+                    onDismiss()
+                    onDelete()
+                },
+            )
+        }
+    }
 }
 
+/** The single badge the card and its menu anchor share: built-in wins over in-use. */
 @Composable
-private fun OverrideBuiltInBadge() {
-    OverrideStatusBadge(
-        imageVector = Yume.ShieldCheck,
-        contentDescription = YumeTxt.Override.Status.BuiltIn,
-        tint = colorScheme.onSurfaceVariantSummary,
-        backgroundColor = colorScheme.secondaryContainer.copy(alpha = 0.78f),
-    )
+private fun OverrideConfigStatusBadge(
+    isBuiltIn: Boolean,
+    isInUse: Boolean,
+) {
+    val active = isInUse && !isBuiltIn
+    val spacing = AppTheme.spacing
+    val sizes = AppTheme.sizes
+
+    Box(
+        modifier =
+            Modifier
+                .size(sizes.statusCapsuleHeight + spacing.space4)
+                .background(
+                    color =
+                        if (active) {
+                            colorScheme.primary.copy(alpha = AppTheme.opacity.subtle)
+                        } else {
+                            colorScheme.secondaryContainer.copy(alpha = AppTheme.opacity.surfaceVariant)
+                        },
+                    shape = CircleShape,
+                ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = if (isBuiltIn || isInUse) Yume.ShieldCheck else Yume.ShieldMinus,
+            contentDescription =
+                when {
+                    isBuiltIn -> YumeTxt.Override.Status.BuiltIn
+                    isInUse -> YumeTxt.Override.Status.InUse
+                    else -> YumeTxt.Override.Status.NotInUse
+                },
+            tint = if (active) colorScheme.primary else colorScheme.onSurfaceVariantSummary,
+            modifier = Modifier.size(UiDp.dp18),
+        )
+    }
 }

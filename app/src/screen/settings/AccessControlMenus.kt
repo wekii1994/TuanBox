@@ -23,13 +23,24 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.ui.platform.LocalContext
-import com.github.yumeyucca.yumebox.data.model.AccessControlSortMode
+import androidx.compose.runtime.setValue
+import com.github.yumeyucca.yumebox.common.util.toast
 import com.github.yumeyucca.yumebox.core.locale.YumeTxt
-import top.yukonga.miuix.kmp.basic.DropdownEntry
-import top.yukonga.miuix.kmp.basic.DropdownItem
-import top.yukonga.miuix.kmp.overlay.OverlayCascadingListPopup
+import com.github.yumeyucca.yumebox.data.model.AccessControlSortMode
+import com.github.yumeyucca.yumebox.presentation.component.GlassMenuItem
+import com.github.yumeyucca.yumebox.presentation.component.GlassPopupHost
+import com.github.yumeyucca.yumebox.presentation.component.GlassPopupSubmenuItem
+import com.github.yumeyucca.yumebox.presentation.component.GlassSubmenuPageHeader
+import com.github.yumeyucca.yumebox.presentation.component.GlassTopActionAnchorIcon
+import com.github.yumeyucca.yumebox.presentation.component.rememberGlassSubmenuState
+import com.github.yumeyucca.yumebox.presentation.icon.Yume
+import com.github.yumeyucca.yumebox.presentation.icon.yume.Bolt
+import com.github.yumeyucca.yumebox.presentation.icon.yume.ListChevronsUpDown
+import top.yukonga.miuix.kmp.glass.GlassPopupAnchor
+import java.util.Locale
 
 // :data cannot depend on YumeTxt, so persisted sort modes are localized at the app boundary.
 private val AccessControlSortMode.displayName: String
@@ -41,34 +52,6 @@ private val AccessControlSortMode.displayName: String
             AccessControlSortMode.UPDATE_TIME -> YumeTxt.AccessControl.SortMode.UpdateTime
         }
 
-@Composable
-internal fun AccessControlSortMenu(
-    show: Boolean,
-    sortMode: AccessControlSortMode,
-    onDismiss: () -> Unit,
-    onSortModeChange: (AccessControlSortMode) -> Unit,
-) {
-    val entries =
-        listOf(
-            DropdownEntry(
-                items =
-                    AccessControlSortMode.entries.map { mode ->
-                        DropdownItem(
-                            text = mode.displayName,
-                            selected = mode == sortMode,
-                            onClick = { onSortModeChange(mode) },
-                        )
-                    }
-            )
-        )
-
-    OverlayCascadingListPopup(
-        show = show,
-        entries = entries,
-        onDismissRequest = onDismiss,
-    )
-}
-
 internal data class AccessControlMenuActions(
     val onShowSystemAppsChange: (Boolean) -> Unit,
     val onSelectedFirstChange: (Boolean) -> Unit,
@@ -77,115 +60,180 @@ internal data class AccessControlMenuActions(
     val onInvertSelection: () -> Unit,
     val onSelectChinaApps: () -> Unit,
     val onSelectNonChinaApps: () -> Unit,
-    val onImportPackages: (String) -> Int,
-    val onExportPackages: () -> String,
 )
+
+private enum class AccessControlMenuPage {
+    Batch,
+    Region,
+}
 
 @Composable
 internal fun AccessControlOperationsMenu(
-    show: Boolean,
+    showPopup: Boolean,
+    onShowPopupChange: (Boolean) -> Unit,
+    anchor: GlassPopupAnchor,
     uiState: AccessControlViewModel.UiState,
-    onDismiss: () -> Unit,
     actions: AccessControlMenuActions,
+    anchorContent: @Composable () -> Unit = {
+        GlassTopActionAnchorIcon(Yume.Bolt)
+    },
 ) {
-    val context = LocalContext.current
-    val clipboardManager =
-        remember(context) {
-            context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        }
     val settings = YumeTxt.AccessControl.Settings
+    val submenu = rememberGlassSubmenuState(showPopup)
+    var submenuPage by remember { mutableStateOf(AccessControlMenuPage.Batch) }
 
-    val entries =
-        listOf(
-            DropdownEntry(
-                items =
-                    listOf(
-                        DropdownItem(
-                            text = settings.ShowSystemApps,
-                            selected = uiState.showSystemApps,
-                            onClick = { actions.onShowSystemAppsChange(!uiState.showSystemApps) },
-                        ),
-                        DropdownItem(
-                            text = settings.SelectedFirst,
-                            selected = uiState.selectedFirst,
-                            onClick = { actions.onSelectedFirstChange(!uiState.selectedFirst) },
-                        ),
+    fun applyAndClose(action: () -> Unit) {
+        action()
+        submenu.close()
+        onShowPopupChange(false)
+    }
+
+    GlassPopupHost(
+        show = showPopup,
+        onDismissRequest = { onShowPopupChange(false) },
+        anchor = anchor,
+        anchorContent = anchorContent,
+        submenu = submenu,
+        submenuContent = {
+            GlassSubmenuPageHeader(
+                state = submenu,
+                text =
+                    when (submenuPage) {
+                        AccessControlMenuPage.Batch -> settings.BatchOperation
+                        AccessControlMenuPage.Region -> settings.RegionQuickSelect
+                    },
+                anchor = anchor,
+            )
+            when (submenuPage) {
+                AccessControlMenuPage.Batch -> {
+                    GlassMenuItem(
+                        text = settings.SelectAll,
+                        onClick = { applyAndClose(actions.onSelectAll) },
                     )
-            ),
-            DropdownEntry(
-                items =
-                    listOf(
-                        DropdownItem(
-                            text = settings.BatchOperation,
-                            children =
-                                listOf(
-                                    DropdownItem(
-                                        text = settings.SelectAll,
-                                        onClick = actions.onSelectAll,
-                                    ),
-                                    DropdownItem(
-                                        text = settings.DeselectAll,
-                                        onClick = actions.onDeselectAll,
-                                    ),
-                                    DropdownItem(
-                                        text = settings.Invert,
-                                        onClick = actions.onInvertSelection,
-                                    ),
-                                ),
-                        ),
-                        DropdownItem(
-                            text = settings.RegionQuickSelect,
-                            children =
-                                listOf(
-                                    DropdownItem(
-                                        text = settings.ChinaApps,
-                                        onClick = actions.onSelectChinaApps,
-                                    ),
-                                    DropdownItem(
-                                        text = settings.OverseasApps,
-                                        onClick = actions.onSelectNonChinaApps,
-                                    ),
-                                ),
-                        ),
-                        DropdownItem(
-                            text = settings.ImportExport,
-                            children =
-                                listOf(
-                                    DropdownItem(
-                                        text = settings.Import,
-                                        onClick = {
-                                            val text =
-                                                clipboardManager.primaryClip
-                                                    ?.takeIf { it.itemCount > 0 }
-                                                    ?.getItemAt(0)
-                                                    ?.text
-                                                    ?.toString()
-                                                    .orEmpty()
-                                            if (text.isNotEmpty()) {
-                                                actions.onImportPackages(text)
-                                            }
-                                        },
-                                    ),
-                                    DropdownItem(
-                                        text = settings.Export,
-                                        onClick = {
-                                            clipboardManager.setPrimaryClip(
-                                                ClipData.newPlainText(
-                                                    "packages",
-                                                    actions.onExportPackages(),
-                                                ),
-                                            )
-                                        },
-                                    ),
-                                ),
-                        ),
+                    GlassMenuItem(
+                        text = settings.DeselectAll,
+                        onClick = { applyAndClose(actions.onDeselectAll) },
                     )
-            ),
+                    GlassMenuItem(
+                        text = settings.Invert,
+                        onClick = { applyAndClose(actions.onInvertSelection) },
+                    )
+                }
+
+                AccessControlMenuPage.Region -> {
+                    GlassMenuItem(
+                        text = settings.ChinaApps,
+                        onClick = { applyAndClose(actions.onSelectChinaApps) },
+                    )
+                    GlassMenuItem(
+                        text = settings.OverseasApps,
+                        onClick = { applyAndClose(actions.onSelectNonChinaApps) },
+                    )
+                }
+            }
+        },
+    ) {
+        GlassMenuItem(
+            text = settings.ShowSystemApps,
+            selected = uiState.showSystemApps,
+            onClick = { actions.onShowSystemAppsChange(!uiState.showSystemApps) },
         )
+        GlassMenuItem(
+            text = settings.SelectedFirst,
+            selected = uiState.selectedFirst,
+            onClick = { actions.onSelectedFirstChange(!uiState.selectedFirst) },
+        )
+        GlassPopupSubmenuItem(
+            text = settings.BatchOperation,
+            anchor = anchor,
+            open = submenu.open && submenuPage == AccessControlMenuPage.Batch,
+            onOpen = { bounds ->
+                submenuPage = AccessControlMenuPage.Batch
+                submenu.openAt(bounds)
+            },
+        )
+        GlassPopupSubmenuItem(
+            text = settings.RegionQuickSelect,
+            anchor = anchor,
+            open = submenu.open && submenuPage == AccessControlMenuPage.Region,
+            onOpen = { bounds ->
+                submenuPage = AccessControlMenuPage.Region
+                submenu.openAt(bounds)
+            },
+        )
+    }
+}
 
-    OverlayCascadingListPopup(
+@Composable
+internal fun AccessControlSortMenu(
+    show: Boolean,
+    onDismiss: () -> Unit,
+    sortMode: AccessControlSortMode,
+    onSortSelected: (AccessControlSortMode) -> Unit,
+    anchor: GlassPopupAnchor,
+    anchorContent: @Composable () -> Unit = {
+        GlassTopActionAnchorIcon(Yume.ListChevronsUpDown)
+    },
+) {
+    GlassPopupHost(
         show = show,
-        entries = entries,
         onDismissRequest = onDismiss,
+        anchor = anchor,
+        anchorContent = anchorContent,
+    ) {
+        AccessControlSortMode.entries.forEach { mode ->
+            GlassMenuItem(
+                text = mode.displayName,
+                selected = sortMode == mode,
+                onClick = {
+                    onSortSelected(mode)
+                    onDismiss()
+                },
+            )
+        }
+    }
+}
+
+internal fun importAccessControlPackages(
+    context: Context,
+    viewModel: AccessControlViewModel,
+) {
+    val clipboardManager =
+        context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    val text =
+        clipboardManager.primaryClip
+            ?.takeIf { it.itemCount > 0 }
+            ?.getItemAt(0)
+            ?.text
+            ?.toString()
+            .orEmpty()
+    val state = viewModel.uiState.value
+    if (text.isBlank() || state.isLoading || state.apps.isEmpty()) {
+        context.toast(YumeTxt.AccessControl.Settings.ImportFailed)
+        return
+    }
+
+    val count = viewModel.importPackages(text)
+    context.toast(
+        if (count > 0) {
+            String.format(Locale.getDefault(), YumeTxt.AccessControl.Settings.ImportSuccess, count)
+        } else {
+            YumeTxt.AccessControl.Settings.ImportFailed
+        }
+    )
+}
+
+internal fun exportAccessControlPackages(
+    context: Context,
+    viewModel: AccessControlViewModel,
+) {
+    val clipboardManager =
+        context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    val count = viewModel.uiState.value.selectedPackages.size
+    clipboardManager.setPrimaryClip(
+        ClipData.newPlainText("packages", viewModel.exportPackages()),
+    )
+    context.toast(
+        String.format(Locale.getDefault(), YumeTxt.AccessControl.Settings.ExportSuccess, count)
     )
 }

@@ -18,56 +18,78 @@
  *
  */
 
-/*
- * This file is part of YumeBox.
- *
- * YumeBox is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License.
- */
-
 package com.github.yumeyucca.yumebox.presentation.navigation
 
 import androidx.compose.runtime.Composable
+import com.github.yumeyucca.yumebox.MainScreen
 import com.github.yumeyucca.yumebox.presentation.component.Navigator
 import com.github.yumeyucca.yumebox.screen.about.AboutScreen
 import com.github.yumeyucca.yumebox.screen.about.OpenSourceLicensesScreen
 import com.github.yumeyucca.yumebox.screen.connection.ConnectionDetailScreen
 import com.github.yumeyucca.yumebox.screen.connection.ConnectionScreen
+import com.github.yumeyucca.yumebox.screen.extensions.ExtensionsScreen
 import com.github.yumeyucca.yumebox.screen.log.LogScreen
 import com.github.yumeyucca.yumebox.screen.navigation.*
-import com.github.yumeyucca.yumebox.screen.rules.RulesScreen
+import com.github.yumeyucca.yumebox.screen.profiles.ProfileEditScreen
+import com.github.yumeyucca.yumebox.screen.profiles.ProfileOverrideScreen
+import com.github.yumeyucca.yumebox.screen.rules.RulesAndProvidersScreen
 import com.github.yumeyucca.yumebox.screen.settings.*
+import com.github.yumeyucca.yumebox.screen.settings.backup.BackupRestoreScreen
 import com.github.yumeyucca.yumebox.screen.traffic.TrafficStatisticsScreen
 
 @Composable
-fun RouteContent(route: Route, navigator: Navigator) {
+internal fun RouteContent(route: Route, navigator: Navigator) {
+    // TEMPORARY DIAGNOSTIC: names the page being composed when a crash happens.
+    com.github.yumeyucca.yumebox.presentation.component.NavTrace.record("compose $route")
     when (route) {
-        Route.AppSettings -> AppSettingsScreen()
+        Route.Main -> {
+            val args = LocalMainRouteArgs.current
+            MainScreen(
+                navigator = navigator,
+                initialDestination = args.destination(),
+                onDestinationSettled = args.onDestinationSettled,
+                rootStack = args.rootStack,
+                detailStack = args.detailStack,
+            )
+        }
+
+        is Route.MoeWallpaperCrop ->
+            MoeWallpaperCropScreen(
+                navigator,
+                route.wallpaperUri,
+                route.initialZoom,
+                route.initialBiasX,
+                route.initialBiasY,
+            )
+
+        Route.Settings -> SettingPager()
+        Route.AppSettings -> AppSettingsScreen(navigator)
+        Route.NotificationSettings -> NotificationSettingsScreen()
         Route.NetworkSettings -> NetworkSettingsScreen(navigator)
         Route.VpnServiceOptions -> VpnServiceOptionsScreen()
         Route.TunServiceOptions -> TunServiceOptionsScreen()
-        Route.EbpfServiceOptions -> EbpfServiceOptionsScreen()
         Route.AccessControl -> AccessControlScreen(navigator)
+        Route.AccessControlAppList -> AccessControlAppListScreen()
         Route.MetaFeature -> MetaFeatureScreen(navigator)
         Route.Connection -> ConnectionScreen(navigator)
-        is Route.ConnectionDetail -> ConnectionDetailScreen(navigator, route.connectionId)
+        is Route.ConnectionDetail ->
+            ConnectionDetailScreen(
+                navigator = navigator,
+                connectionId = route.connectionId,
+                canInterrupt = route.canInterrupt,
+            )
         Route.TrafficStatistics -> TrafficStatisticsScreen()
         Route.Log -> LogScreen(navigator)
-        Route.Rules -> RulesScreen(navigator)
         Route.About -> AboutScreen(navigator)
         Route.OpenSourceLicenses -> OpenSourceLicensesScreen(navigator)
         Route.Override -> OverrideScreen(navigator)
-        Route.OverrideConfigPreview -> OverrideConfigPreviewRoute(navigator)
-        Route.Providers -> ProvidersScreen(navigator)
+        is Route.OverrideConfigPreview -> OverrideConfigPreviewRoute(navigator, route.previewId)
+        is Route.ProfileEdit -> ProfileEditScreen(navigator, route.profileId)
+        is Route.ProfileOverride -> ProfileOverrideScreen(navigator, route.profileId)
+        is Route.RulesAndProviders -> RulesAndProvidersScreen(navigator, route.tab)
         Route.Feature -> FeatureScreen(navigator)
+        Route.Extensions -> ExtensionsScreen()
+        Route.BackupRestore -> BackupRestoreScreen()
         Route.CustomRouting -> CustomRoutingRoute(navigator)
-        Route.StringListEditor -> StringListEditorScreen(navigator)
-        Route.KeyValueEditor -> KeyValueEditorScreen(navigator)
-        is Route.Main, is Route.MoeWallpaperCrop -> Unit
     }
 }
-
-val SettingsDetailRootRoutes: Set<Route> =
-    setOf(Route.AppSettings, Route.NetworkSettings, Route.Override, Route.MetaFeature, Route.Feature, Route.About)

@@ -20,7 +20,9 @@
 
 package com.github.yumeyucca.yumebox.data.store
 
+import com.github.yumeyucca.yumebox.core.model.TunConfig
 import com.github.yumeyucca.yumebox.core.model.TunDnsMode
+import com.github.yumeyucca.yumebox.data.model.AccessControlImportStrategy
 import com.github.yumeyucca.yumebox.data.model.AccessControlMode
 import com.github.yumeyucca.yumebox.data.model.AccessControlSortMode
 import com.github.yumeyucca.yumebox.data.model.RunMode
@@ -36,7 +38,6 @@ class NetworkSettingsStore(externalMmkv: MMKV) : MMKVPreference(externalMmkv = e
     val runMode by enumFlow(RunMode.VpnService)
 
     val bypassPrivateNetwork by boolFlow(true)
-    val ebpfBypassCn by boolFlow(true)
     val dnsHijack by boolFlow(true)
     val allowBypass by boolFlow(true)
     val enableIPv6 by boolFlow(false)
@@ -50,8 +51,8 @@ class NetworkSettingsStore(externalMmkv: MMKV) : MMKVPreference(externalMmkv = e
     // app-owned fd, so the start path maps those onto gVisor.
     val tunStack by enumFlow(TunStack.GVisor)
     val tunRouteExcludeAddress by stringListFlow(emptyList())
-    val tunIfName by strFlow("Yume")
-    val tunMtu by intFlow(1500)
+    val tunIfName by strFlow(TunConfig.DefaultIfName)
+    val tunMtu by intFlow(TunConfig.DefaultMtu)
     val tunAutoRoute by boolFlow(true)
 
     // strict-route off (can black-hole traffic); auto-redirect on — it carries the app TCP egress.
@@ -64,14 +65,15 @@ class NetworkSettingsStore(externalMmkv: MMKV) : MMKVPreference(externalMmkv = e
     // redir-host is the reliable default (real IPs, no fake-ip pool/filter to get wrong); fake-ip
     // stays selectable.
     val tunDnsMode by enumFlow(TunDnsMode.RedirHost)
-    val tunFakeIpRange by strFlow("198.18.0.1/16")
-    val tunFakeIpRange6 by strFlow("fc00::/18")
+    val tunFakeIpRange by strFlow(TunConfig.DefaultFakeIpRange)
+    val tunFakeIpRange6 by strFlow(TunConfig.DefaultFakeIpRange6)
 
     val accessControlMode by enumFlow(AccessControlMode.ALLOW_ALL)
     val accessControlPackages by stringSetFlow(emptySet())
     val accessControlSelectedFirst by boolFlow(true)
     val accessControlShowSystemApps by boolFlow(false)
     val accessControlSortMode by enumFlow(AccessControlSortMode.LABEL)
+    val accessControlImportStrategy by enumFlow(AccessControlImportStrategy.MERGE)
 
     // Wi-Fi SSIDs are location-sensitive on Android. This state is only enabled after the user
     // explicitly completes the location-permission flow from the Wi-Fi automation screen.

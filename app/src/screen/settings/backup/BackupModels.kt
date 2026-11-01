@@ -33,6 +33,11 @@ import java.util.*
 
 const val BACKUP_FORMAT_VERSION = 1
 
+internal enum class BackupRestoreStrategy {
+    Overwrite,
+    Merge,
+}
+
 @Serializable
 data class BackupManifest(
     val formatVersion: Int = BACKUP_FORMAT_VERSION,
@@ -77,9 +82,11 @@ data class AppSettingsBackup(
     val moeWallpaperBiasX: Float = 0.0f,
     val moeWallpaperBiasY: Float = 0.0f,
     val moeHomeQuote: String = "时间一分一秒流逝而去 终结一步一步迎面而来",
+    val moeHomeQuoteAuthor: String = "恋文",
     val moeSidebarExpanded: Boolean = true,
     val pageScale: Float = 1.0f,
     val customUserAgent: String = "",
+    val autoCheckUpdate: Boolean = true,
 )
 
 @Serializable
@@ -106,6 +113,7 @@ data class NetworkSettingsBackup(
     val accessControlSelectedFirst: Boolean = true,
     val accessControlShowSystemApps: Boolean = false,
     val accessControlSortMode: AccessControlSortMode = AccessControlSortMode.LABEL,
+    val accessControlImportStrategy: AccessControlImportStrategy = AccessControlImportStrategy.MERGE,
 )
 
 @Serializable

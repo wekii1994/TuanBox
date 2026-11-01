@@ -20,25 +20,30 @@
 
 package com.github.yumeyucca.yumebox.presentation.navigation
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.runtime.*
-import androidx.compose.ui.Modifier
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import com.arkivanov.decompose.ComponentContext
 import com.arkivanov.decompose.ExperimentalDecomposeApi
-import com.arkivanov.decompose.extensions.compose.stack.Children
-import com.arkivanov.decompose.extensions.compose.stack.animation.*
+import com.arkivanov.decompose.childContext
+import com.arkivanov.decompose.extensions.compose.stack.animation.StackAnimation
+import com.arkivanov.decompose.extensions.compose.stack.animation.fade
+import com.arkivanov.decompose.extensions.compose.stack.animation.plus
 import com.arkivanov.decompose.extensions.compose.stack.animation.predictiveback.androidPredictiveBackAnimatableV1
 import com.arkivanov.decompose.extensions.compose.stack.animation.predictiveback.predictiveBackAnimation
-import com.arkivanov.decompose.extensions.compose.subscribeAsState
-import com.arkivanov.decompose.router.stack.childStack
+import com.arkivanov.decompose.extensions.compose.stack.animation.scale
+import com.arkivanov.decompose.extensions.compose.stack.animation.slide
+import com.arkivanov.decompose.extensions.compose.stack.animation.stackAnimation
 import com.arkivanov.essenty.backhandler.BackHandler
-import com.github.yumeyucca.yumebox.MainScreen
-import com.github.yumeyucca.yumebox.presentation.component.LocalNavigator
+import com.github.yumeyucca.yumebox.MainActivity
+import com.github.yumeyucca.yumebox.presentation.component.BottomBarDestination
 import com.github.yumeyucca.yumebox.presentation.component.Navigator
-import com.github.yumeyucca.yumebox.screen.settings.MoeWallpaperCropScreen
-import kotlinx.coroutines.launch
+import com.github.yumeyucca.yumebox.presentation.component.rememberWindowLayoutMode
 
 internal fun <C : Any, T : Any> yumeStackAnimation(): StackAnimation<C, T> =
     stackAnimation(fade(tween(300)) + slide(tween(400)) + scale(tween(500)))
@@ -55,115 +60,89 @@ private fun <T : Any> yumeAnimation(
         selector = { event, _, _ -> androidPredictiveBackAnimatableV1(event) },
     )
 
+/** Owns every app navigation stack and all commands sent to them. */
 class AppNavigationComponent(
     val componentContext: ComponentContext,
     val predictiveBackEnabledAtLaunch: Boolean,
 ) {
-    // The bottom pager is nested in Route.Main, so keep its semantic destination outside the
-    // screen composition while another Activity or a child route is on top.
-    private val mainPageState = mutableIntStateOf(0)
-    private var boundMainRoute: Route.Main? = null
+    private val mainDestinationState = mutableStateOf(BottomBarDestination.Home)
 
-    val navigator = Navigator(listOf(Route.Main()))
-    internal val childStack =
-        componentContext.childStack(
-            source = navigator.navigation,
-            initialConfiguration = Route.Main(),
-            serializer = null,
-            // predictiveBackAnimation is the sole system-back callback for this stack. Keeping
-            // childStack's own callback enabled lets fast gestures bypass the fallback animation.
-            handleBackButton = false,
-        ) { rawRoute, _ ->
-            RouteChild(rawRoute as Route, navigator, this)
-        }
+    val navigator = Navigator()
+    val detailNavigator = Navigator()
 
-    internal fun bindMainRoute(route: Route.Main) {
-        if (boundMainRoute != route) {
-            mainPageState.intValue = route.initialPage
-            boundMainRoute = route
-        }
+    internal val routeStack =
+        RouteStack(
+            navigator = navigator,
+            value =
+                navigator.routeStack(
+                    componentContext = componentContext.childContext("RootNavigation"),
+                    initialRoute = Route.Main,
+                    handleBackButton = true,
+                ),
+        )
+    internal val detailStack =
+        RouteStack(
+            navigator = detailNavigator,
+            value =
+                detailNavigator.routeStack(
+                    componentContext = componentContext.childContext("DetailNavigation"),
+                    initialRoute = PaneRestingRoute,
+                    handleBackButton = false,
+                ),
+        )
+
+    internal val mainDestination: BottomBarDestination
+        get() = mainDestinationState.value
+
+    internal fun updateMainDestination(destination: BottomBarDestination) {
+        mainDestinationState.value = destination
     }
 
-    internal fun updateMainPage(page: Int) {
-        mainPageState.intValue = page
+    fun navigateBack() {
+        navigator.pop()
     }
 
-    internal val mainPage: Int
-        get() = mainPageState.intValue
-}
-
-internal class RouteChild(
-    private val route: Route,
-    private val navigator: Navigator,
-    private val navigationComponent: AppNavigationComponent,
-) {
-    init {
-        if (route is Route.Main) {
-            navigationComponent.bindMainRoute(route)
-        }
-    }
-
-    @Composable
-    fun Content() {
-        CompositionLocalProvider(LocalNavigator provides navigator) {
-            when (route) {
-                is Route.Main ->
-                    MainScreen(
-                        navigator = navigator,
-                        initialPage = navigationComponent.mainPage,
-                        onMainPageChanged = navigationComponent::updateMainPage,
-                    )
-                is Route.MoeWallpaperCrop ->
-                    MoeWallpaperCropScreen(
-                        navigator,
-                        route.wallpaperUri,
-                        route.initialZoom,
-                        route.initialBiasX,
-                        route.initialBiasY,
-                    )
-
-                else -> RouteContent(route, navigator)
-            }
+    fun handleDeepLink(link: DeepLink, inDetailPane: Boolean) {
+        when (link) {
+            is DeepLink.Page -> updateMainDestination(link.destination)
+            is DeepLink.Screen ->
+                (if (inDetailPane) detailNavigator else navigator).push(link.route)
         }
     }
 }
 
 @Composable
 fun AppNavContainer(component: AppNavigationComponent) {
-    val componentContext = component.componentContext
-    val navigator = component.navigator
     val predictiveBackEnabled = component.predictiveBackEnabledAtLaunch
-    val scope = rememberCoroutineScope()
-    val commitBack: () -> Unit = remember(navigator, scope) {
-        {
-            scope.launch {
-                // A fast system gesture can complete without a progress frame. Commit after the
-                // platform transaction has closed so Children can start its fallback animation.
-                withFrameNanos { }
-                navigator.pop()
-            }
-            Unit
-        }
-    }
-    val stack by component.childStack.subscribeAsState()
-    SideEffect {
-        navigator.syncBackStack(stack.items.map { it.configuration })
-    }
-    if (!predictiveBackEnabled) {
-        BackHandler(enabled = stack.backStack.isNotEmpty(), onBack = commitBack)
-    }
+    val commitBack = remember(component) { component::navigateBack }
     val animation: StackAnimation<Any, RouteChild> = remember(component) {
         if (predictiveBackEnabled) {
-            yumeAnimation(componentContext.backHandler, commitBack)
+            yumeAnimation(component.componentContext.backHandler, commitBack)
         } else {
             yumeStackAnimation()
         }
     }
-    Children(
-        stack = stack,
-        modifier = Modifier.fillMaxSize(),
-        animation = animation,
-    ) { child ->
-        child.instance.Content()
+
+    // Deep links belong to the retained navigation component, not to Route.Main's composition.
+    // They therefore work even when a child route is currently covering the main pager.
+    val usesSplitShell = rememberWindowLayoutMode().usesSplitShell
+    val pendingDeepLink by MainActivity.pendingDeepLink.collectAsState()
+    LaunchedEffect(pendingDeepLink, usesSplitShell) {
+        val pending = pendingDeepLink ?: return@LaunchedEffect
+        component.handleDeepLink(pending, inDetailPane = usesSplitShell)
+        MainActivity.clearPendingDeepLink(pending)
+    }
+
+    val onDestinationSettled = remember(component) { component::updateMainDestination }
+    val mainRouteArgs = remember(component) {
+        MainRouteArgs(
+            destination = { component.mainDestination },
+            onDestinationSettled = onDestinationSettled,
+            rootStack = component.routeStack,
+            detailStack = component.detailStack,
+        )
+    }
+    CompositionLocalProvider(LocalMainRouteArgs provides mainRouteArgs) {
+        RouteStackHost(stack = component.routeStack, animation = animation)
     }
 }

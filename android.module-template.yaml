@@ -3,6 +3,12 @@ apply:
 repositories:
   - https://jitpack.io
   - https://raw.githubusercontent.com/MetaCubeX/maven-backup/main/releases
+  - id: lucide-compose
+    url: https://maven.pkg.github.com/YumeYucca/lucide-compose
+    credentials:
+      file: local.properties
+      usernameKey: gpr.user
+      passwordKey: gpr.key
 settings:
   jvm:
     release: 25
@@ -13,5 +19,5 @@ settings:
   android:
     compileSdk: 37
     targetSdk: 37
-    minSdk: 26
+    minSdk: 33
     buildToolsVersion: 37.0.0

@@ -22,13 +22,14 @@ concurrency:
 
 permissions:
   contents: write
+  packages: read
   attestations: write
   id-token: write
 
 jobs:
   prepare-version:
     name: "00 · Prepare Version & Release Notes"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     outputs:
       release_tag: ${{ steps.version.outputs.release_tag }}
       release_title: ${{ steps.version.outputs.release_title }}
@@ -172,13 +173,14 @@ jobs:
     uses: ./.github/workflows/reusable-prepare-publish.yml
     with:
       channel: stable
-      module: app
       artifact_prefix: YumeBox
       release_tag: ${{ needs.prepare-version.outputs.release_tag }}
       meta_asset_name: YumeBox-stable-meta.json
       raw_apk_artifact_name: apk-raw-stable-app
       publish_artifact_name: publish-stable-app
       apk_name_tail: ${{ needs.build-apk-stable-app.outputs.apk_name_tail }}
+      publish_meta_artifact_name: publish-meta-stable-app
+      update_public_base_url: ${{ vars.R2_PUBLIC_BASE_URL }}
     secrets: inherit
 
   publish-release-stable:

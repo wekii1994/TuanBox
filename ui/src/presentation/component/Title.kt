@@ -22,17 +22,27 @@
 
 package com.github.yumeyucca.yumebox.presentation.component
 
-
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import com.github.yumeyucca.yumebox.presentation.theme.topPadding
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.Dp
+import com.github.yumeyucca.yumebox.presentation.theme.AppTheme
+import com.github.yumeyucca.yumebox.presentation.theme.resolve
 import top.yukonga.miuix.kmp.basic.SmallTitle
+
+@Composable
+internal fun smallTitleColor(): Color = AppTheme.colors.title.resolve()
 
 /**
  * App-level wrapper around Miuix `Title`. Keeps YumeBox default spacing while avoiding direct Miuix
  * usage at call sites.
  */
 @Composable
-fun Title(text: String) {
-    SmallTitle(modifier = Modifier.topPadding(), text = text)
+fun Title(text: String, topPadding: Dp = AppTheme.spacing.space8) {
+    SmallTitle(
+        modifier = Modifier.padding(top = topPadding),
+        text = text,
+        textColor = smallTitleColor(),
+    )
 }

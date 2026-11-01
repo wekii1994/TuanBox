@@ -18,7 +18,7 @@
  *
  */
 
-@file:Suppress("FunctionName", "UnnecessaryVariable", "KotlinDeprecation")
+@file:Suppress("FunctionName", "KotlinDeprecation")
 
 package com.github.yumeyucca.yumebox.screen.moe
 
@@ -32,8 +32,6 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.statusBars
@@ -42,46 +40,59 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.core.view.WindowCompat
 import com.github.yumeyucca.yumebox.common.util.toast
 import com.github.yumeyucca.yumebox.core.util.PollingTimerSpecs
 import com.github.yumeyucca.yumebox.core.util.PollingTimers
-import com.github.yumeyucca.yumebox.data.model.ThemeMode
 import com.github.yumeyucca.yumebox.domain.model.TrafficData
+import com.github.yumeyucca.yumebox.presentation.component.WindowLayoutMode
+import com.github.yumeyucca.yumebox.presentation.component.AppMarkdownDialog
 import com.github.yumeyucca.yumebox.presentation.component.BottomBarDestination
+import com.github.yumeyucca.yumebox.presentation.component.LocalDetailNavigator
 import com.github.yumeyucca.yumebox.presentation.component.LocalHandlePageChange
 import com.github.yumeyucca.yumebox.presentation.component.LocalNavigator
-import com.github.yumeyucca.yumebox.presentation.icon.ShellIcons
 import com.github.yumeyucca.yumebox.presentation.icon.Yume
 import com.github.yumeyucca.yumebox.presentation.icon.yume.Zashboard
 import com.github.yumeyucca.yumebox.presentation.icon.yume.Activity
+import com.github.yumeyucca.yumebox.presentation.icon.yume.Bolt
+import com.github.yumeyucca.yumebox.presentation.icon.yume.PackageCheck
+import com.github.yumeyucca.yumebox.presentation.icon.yume.Palette
 import com.github.yumeyucca.yumebox.presentation.navigation.Route
 import com.github.yumeyucca.yumebox.presentation.theme.AnimationSpecs
+import com.github.yumeyucca.yumebox.presentation.theme.isDark
+import com.github.yumeyucca.yumebox.presentation.util.findActivity
 import com.github.yumeyucca.yumebox.screen.home.HomeProxyControlState
 import com.github.yumeyucca.yumebox.screen.home.HomeViewModel
+import com.github.yumeyucca.yumebox.update.AppUpdateDownloadState
+import com.github.yumeyucca.yumebox.update.AppUpdateViewModel
 import com.github.yumeyucca.yumebox.screen.settings.AppSettingsViewModel
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 import com.github.yumeyucca.yumebox.core.locale.YumeTxt
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
+// The moe home backs its translucent cards with paper white in light mode; the themed surface
+// reads as grey next to the wallpaper.
+private val MoeHomeSurfaceLight = Color.White
+
 @Composable
 fun MoeHomePage(
-    mainInnerPadding: PaddingValues,
     wallpaperUri: String,
     wallpaperZoom: Float = 1f,
     wallpaperBiasX: Float = 0f,
     wallpaperBiasY: Float = 0f,
     isActive: Boolean,
-    pageProgress: Float = 1f,
-    sidebarProgress: Float = pageProgress,
+    /** Pager progress, handed down as state and read where it is drawn. */
+    pageProgress: State<Float>,
     onOpenPanel: (() -> Unit)? = null,
-    windowLayoutMode: com.github.yumeyucca.yumebox.presentation.component.WindowLayoutMode =
-        com.github.yumeyucca.yumebox.presentation.component.WindowLayoutMode.Compact,
+    windowLayoutMode: WindowLayoutMode = WindowLayoutMode.Compact,
 ) {
     val homeViewModel = koinViewModel<HomeViewModel>()
+    val appUpdateViewModel = koinViewModel<AppUpdateViewModel>()
     val appSettingsViewModel = koinViewModel<AppSettingsViewModel>()
     val context = LocalContext.current
     val hapticFeedback = LocalHapticFeedback.current
@@ -89,44 +100,42 @@ fun MoeHomePage(
     val lifecycleOwner = LocalLifecycleOwner.current
 
     val screen by homeViewModel.screenState.collectAsState()
+    val update by appUpdateViewModel.update.collectAsState()
+    val downloadState by appUpdateViewModel.downloadState.collectAsState()
+    val downloadError by appUpdateViewModel.downloadError.collectAsState()
     val moe by appSettingsViewModel.moeHomeSectionState.collectAsState()
-    val controlState = screen.controlState
-    val profiles = screen.profiles
-    val profilesLoaded = screen.profilesLoaded
-    val recommendedProfile = screen.recommendedProfile
-    val hasEnabledProfile = screen.hasEnabledProfile
-    val selectedServerName = screen.selectedServerName
-    val selectedServerPing = screen.selectedServerPing
-    val trafficNow = screen.trafficNow
-    val isRemoteController = screen.isRemoteController
-    val themeMode = moe.themeMode
-    val classicHomeEnabled = moe.classicHomeEnabled
-    val moeHomeQuote = moe.moeHomeQuote
+    val moeHomeQuoteAuthor by appSettingsViewModel.moeHomeQuoteAuthor.state.collectAsState()
     val sidebarExpanded = moe.sidebarExpanded
     val useSystemWallpaper = moe.useSystemWallpaper
+    val statusBarSpacing by appSettingsViewModel.moeStatusBarSpacing.state.collectAsState()
 
-    val statusBarTop = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val statusBarInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val statusBarTop =
+        if (statusBarSpacing) statusBarInset else MoeUi.Hero.containerHorizontalInset
+    // The window picks the layout once here; neither layout composable inspects the window mode.
+    val homeLayout =
+        if (windowLayoutMode.usesSplitShell) MoeHomeLayoutMode.Tablet
+        else MoeHomeLayoutMode.Phone
+
     val batteryPercent = rememberMoeBatteryPercent(context)
     var showHomeSettingsSheet by remember { mutableStateOf(false) }
+    var showUpdateDialog by remember(update) { mutableStateOf(false) }
     var wallpaperRefreshKey by remember { mutableIntStateOf(0) }
-
-    LaunchedEffect(Unit) { homeViewModel.refreshProxyMode() }
 
     LaunchedEffect(isActive) {
         homeViewModel.setHomeScreenActive(isActive)
         if (isActive) {
             homeViewModel.reconcileRuntimeState()
-            homeViewModel.refreshProxyMode()
         }
     }
 
     DisposableEffect(homeViewModel) { onDispose { homeViewModel.setHomeScreenActive(false) } }
 
-    DisposableEffect(lifecycleOwner, homeViewModel) {
+    DisposableEffect(lifecycleOwner, homeViewModel, isActive) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 homeViewModel.reconcileRuntimeState()
-                homeViewModel.refreshProxyMode()
+                if (isActive) appUpdateViewModel.refresh()
                 wallpaperRefreshKey++
             }
         }
@@ -139,6 +148,12 @@ fun MoeHomePage(
             homeViewModel.consumeError()
         }
     }
+    LaunchedEffect(downloadError) {
+        downloadError?.let { error ->
+            context.toast(error, Toast.LENGTH_LONG)
+            appUpdateViewModel.consumeDownloadError()
+        }
+    }
     LaunchedEffect(screen.uiMessage) {
         screen.uiMessage?.let { message ->
             context.toast(message, Toast.LENGTH_SHORT)
@@ -146,7 +161,6 @@ fun MoeHomePage(
         }
     }
 
-    val visualControlState = controlState
     // Tick once a second whether running or idle: running drives the elapsed timer, idle drives the
     // wall-clock shown in the rail so it always reflects the real time instead of a frozen 00:00.
     val now by
@@ -156,46 +170,43 @@ fun MoeHomePage(
         }
     }
     val startedAt = screen.runtimeStartedAt
-    val isRunning = visualControlState == HomeProxyControlState.Running
+    val isRunning = screen.controlState == HomeProxyControlState.Running
     val elapsedMillis =
-        if (isRunning && startedAt != null && !isRemoteController) {
+        if (isRunning && startedAt != null && !screen.isRemoteController) {
             (now - startedAt).coerceAtLeast(0L)
         } else {
             0L
         }
     val durationPair =
-        remember(isRunning, isRemoteController, elapsedMillis, now) {
-            if (isRunning && !isRemoteController) {
+        remember(isRunning, screen.isRemoteController, elapsedMillis, now) {
+            if (isRunning && !screen.isRemoteController) {
                 formatMoeDuration(elapsedMillis)
             } else {
                 formatMoeClock(now)
             }
         }
     val trafficData =
-        remember(trafficNow, isRunning) {
-            if (isRunning) TrafficData.from(trafficNow) else TrafficData.zero
+        remember(screen.trafficNow, isRunning) {
+            if (isRunning) TrafficData.from(screen.trafficNow) else TrafficData.zero
         }
-    val systemDark = isSystemInDarkTheme()
-    val isDarkHomeSurface =
-        when (themeMode) {
-            ThemeMode.Dark -> true
-            ThemeMode.Light -> false
-            ThemeMode.Auto -> systemDark
-        }
-    val contentSurface = if (isDarkHomeSurface) MiuixTheme.colorScheme.surface else Color.White
+    val isDarkHomeSurface = moe.themeMode.isDark()
+    val contentSurface = if (isDarkHomeSurface) MiuixTheme.colorScheme.surface else MoeHomeSurfaceLight
+    HomeStatusBarAppearance(
+        isActive = isActive,
+        statusBarSpacing = statusBarSpacing,
+        isDarkHomeSurface = isDarkHomeSurface,
+    )
     val handlePageChange = LocalHandlePageChange.current
-    val sidebarIcons = remember(onOpenPanel, handlePageChange) {
-        listOf(
-            MoeSidebarIconItem(Yume.Zashboard) { onOpenPanel?.invoke() },
-            MoeSidebarIconItem(ShellIcons.OpenProfiles) {
-                handlePageChange(BottomBarDestination.Config)
-            },
-            MoeSidebarIconItem(ShellIcons.OpenSettings) {
-                handlePageChange(BottomBarDestination.Setting)
-            },
-        )
-    }
-    val quoteText = moeHomeQuote.ifBlank { YumeTxt.AppSettings.Interface.HomeQuoteDefault }
+    val rootNavigator = LocalNavigator.current
+    val detailNavigator = LocalDetailNavigator.current
+    // Settings is no longer a pager tab: the sidebar entry pushes it as a standalone page
+    // (replacing the detail pane inside the tablet shell).
+    val openSettingsPage: () -> Unit =
+        remember(rootNavigator, detailNavigator) {
+            val targetNavigator = detailNavigator ?: rootNavigator
+            { targetNavigator.push(Route.Settings) }
+        }
+    val quoteText = moe.moeHomeQuote.ifBlank { YumeTxt.AppSettings.Interface.HomeQuoteDefault }
     val animatedSidebarToggleProgress by
     animateFloatAsState(
         targetValue = if (sidebarExpanded) 1f else 0f,
@@ -212,22 +223,26 @@ fun MoeHomePage(
         label = "moe_sidebar_toggle",
     )
 
+    // Order matters: stopping must never wait on the profile list, and a remote controller only
+    // mirrors another device's state instead of toggling it.
     val handleProxyAction: () -> Unit = {
-        if (isRemoteController) {
-            // Remote controller mode has no local start/stop action here.
-        } else if (!hasEnabledProfile || recommendedProfile == null) {
-            context.toast(YumeTxt.ProfilesVM.Error.ProfileNotExist, Toast.LENGTH_SHORT)
-        } else if (visualControlState == HomeProxyControlState.Idle) {
-            val profile = recommendedProfile
-            hapticFeedback.performHapticFeedback(HapticFeedbackType.VirtualKey)
-            homeViewModel.startProxy(profileId = profile.uuid.toString(), mode = null)
-        } else if (visualControlState == HomeProxyControlState.Running) {
-            hapticFeedback.performHapticFeedback(HapticFeedbackType.VirtualKey)
-            scope.launch { homeViewModel.stopProxy() }
+        val profile = screen.recommendedProfile
+        when {
+            screen.isRemoteController -> Unit
+            screen.controlState == HomeProxyControlState.Running -> {
+                hapticFeedback.performHapticFeedback(HapticFeedbackType.VirtualKey)
+                scope.launch { homeViewModel.stopProxy() }
+            }
+            !screen.controlState.canInteract -> Unit
+            profile == null || !screen.hasEnabledProfile ->
+                context.toast(YumeTxt.ProfilesVM.Error.ProfileNotExist, Toast.LENGTH_SHORT)
+            else -> {
+                hapticFeedback.performHapticFeedback(HapticFeedbackType.VirtualKey)
+                homeViewModel.startProxy(profileId = profile.uuid.toString(), mode = null)
+            }
         }
     }
 
-    val navigator = LocalNavigator.current
     val wallpaperPickerLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
             uri ?: return@rememberLauncherForActivityResult
@@ -237,7 +252,7 @@ fun MoeHomePage(
                     Intent.FLAG_GRANT_READ_URI_PERMISSION,
                 )
             }
-            navigator.push(
+            rootNavigator.push(
                 Route.MoeWallpaperCrop(
                     wallpaperUri = uri.toString(),
                     initialZoom = wallpaperZoom,
@@ -246,17 +261,38 @@ fun MoeHomePage(
                 )
             )
         }
-    val launchWallpaperPicker: () -> Unit = {
-        wallpaperPickerLauncher.launch(
-            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-        )
-    }
-    val homeSidebarIcons = remember(sidebarIcons, navigator) {
-        sidebarIcons + MoeSidebarIconItem(Yume.Activity) {
-            hapticFeedback.performHapticFeedback(HapticFeedbackType.VirtualKey)
-            navigator.push(Route.TrafficStatistics)
+    val launchWallpaperPicker: () -> Unit =
+        remember(wallpaperPickerLauncher) {
+            {
+                wallpaperPickerLauncher.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                )
+            }
         }
-    }
+    val openTrafficStatisticsPage: () -> Unit =
+        remember(detailNavigator, navigator) {
+            {
+                (detailNavigator ?: navigator).push(Route.TrafficStatistics)
+            }
+        }
+    val homeSidebarIcons =
+        remember(onOpenPanel, handlePageChange, openSettingsPage, launchWallpaperPicker, openTrafficStatisticsPage) {
+            listOf(
+                MoeSidebarIconItem(Yume.Zashboard) { onOpenPanel?.invoke() },
+                MoeSidebarIconItem(Yume.PackageCheck) {
+                    handlePageChange(BottomBarDestination.Config)
+                },
+                MoeSidebarIconItem(Yume.Bolt) { openSettingsPage() },
+                MoeSidebarIconItem(Yume.Palette) {
+                    hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                    launchWallpaperPicker()
+                },
+                MoeSidebarIconItem(Yume.Activity) {
+                    hapticFeedback.performHapticFeedback(HapticFeedbackType.VirtualKey)
+                    openTrafficStatisticsPage()
+                },
+            )
+        }
 
     val layoutState =
         MoeHomeLayoutState(
@@ -266,7 +302,7 @@ fun MoeHomePage(
             wallpaperBiasY = wallpaperBiasY,
             statusBarTop = statusBarTop,
             pageProgress = pageProgress,
-            sidebarProgress = sidebarProgress,
+            sidebarProgress = pageProgress,
             sidebarToggleProgress = animatedSidebarToggleProgress,
             duration = durationPair,
             batteryPercent = batteryPercent,
@@ -274,19 +310,21 @@ fun MoeHomePage(
             contentSurface = contentSurface,
             isRunning = isRunning,
             traffic = trafficData,
-            selectedServerName = selectedServerName,
-            selectedServerPing = selectedServerPing,
+            selectedServerName = screen.selectedServerName,
+            selectedServerPing = screen.selectedServerPing,
             now = now,
             quote = quoteText,
-            controlState = visualControlState,
-            canLaunch = profilesLoaded && profiles.isNotEmpty() && !isRemoteController,
-            isRemoteController = isRemoteController,
-            usesTabletLayout = windowLayoutMode.usesNavigationRail,
+            quoteAuthor = moeHomeQuoteAuthor,
+            controlState = screen.controlState,
+            canLaunch =
+                screen.profilesLoaded && screen.profiles.isNotEmpty() && !screen.isRemoteController,
+            isRemoteController = screen.isRemoteController,
+            hasUpdate = update != null,
         )
     val actions =
         MoeHomeActions(
             toggleSidebar = {
-                if (!windowLayoutMode.usesNavigationRail) {
+                if (homeLayout == MoeHomeLayoutMode.Phone) {
                     appSettingsViewModel.onMoeSidebarExpandedChange(!sidebarExpanded)
                 }
             },
@@ -296,28 +334,88 @@ fun MoeHomePage(
             },
             openSettings = { showHomeSettingsSheet = true },
             toggleProxy = handleProxyAction,
-            openTrafficStatistics = { navigator.push(Route.TrafficStatistics) },
+            openUpdate = { showUpdateDialog = true },
+            openTrafficStatistics = openTrafficStatisticsPage,
         )
     CompositionLocalProvider(LocalWallpaperRefreshKey provides wallpaperRefreshKey) {
-        with(actions) { MoeHomeLayout(layoutState) }
+        with(actions) { MoeHomeLayout(layoutState, homeLayout) }
     }
 
     MoeHomeSettingsSheet(
         show = showHomeSettingsSheet,
-        quote = moe.moeHomeQuote,
-        classicHomeEnabled = classicHomeEnabled,
-        sidebarExpanded = sidebarExpanded,
+        copy =
+            MoeHomeCopy(
+                quote = moe.moeHomeQuote,
+                author = moeHomeQuoteAuthor,
+                expandSidebar = sidebarExpanded,
+            ),
         useSystemWallpaper = useSystemWallpaper,
-        onQuoteChange = appSettingsViewModel::onMoeHomeQuoteChange,
-        onClassicHomeEnabledChange = appSettingsViewModel::onClassicHomeEnabledChange,
-        onSidebarExpandedChange = appSettingsViewModel::onMoeSidebarExpandedChange,
+        statusBarSpacing = statusBarSpacing,
         onUseSystemWallpaperChange = appSettingsViewModel::onUseSystemWallpaperChange,
+        onStatusBarSpacingChange = appSettingsViewModel::onMoeStatusBarSpacingChange,
+        onSaveCopy = { edited ->
+            appSettingsViewModel.onMoeHomeQuoteChange(edited.quote)
+            appSettingsViewModel.onMoeHomeQuoteAuthorChange(edited.author)
+            appSettingsViewModel.onMoeSidebarExpandedChange(edited.expandSidebar)
+        },
         onChangeWallpaper = {
             showHomeSettingsSheet = false
             launchWallpaperPicker()
         },
         onDismiss = { showHomeSettingsSheet = false },
     )
+
+    update?.let { availableUpdate ->
+        val download = downloadState as? AppUpdateDownloadState.Downloading
+        AppMarkdownDialog(
+            show = showUpdateDialog,
+            title = YumeTxt.Home.Update.Title,
+            markdown = availableUpdate.notes.ifBlank { YumeTxt.Home.Update.NoNotes },
+            onDismissRequest = {
+                if (download != null) appUpdateViewModel.cancelDownload()
+                showUpdateDialog = false
+            },
+            onConfirm = { appUpdateViewModel.startDownload() },
+            confirmText = YumeTxt.Home.Update.Action,
+            dismissText = YumeTxt.Home.Update.Later,
+            busy = download != null,
+            busyText = download?.percent?.let { "$it%" },
+        )
+    }
+}
+
+/**
+ * Light status-bar icons over the hero, and only while the home surface is actually showing.
+ * Leaving the page (or turning the dynamic status-bar inset off) hands the icons back to the
+ * app-wide system-night-mode appearance, hence the restore in [DisposableEffect].
+ */
+@Composable
+private fun HomeStatusBarAppearance(
+    isActive: Boolean,
+    statusBarSpacing: Boolean,
+    isDarkHomeSurface: Boolean,
+) {
+    val view = LocalView.current
+    val activity = view.context.findActivity()
+    val controller =
+        remember(view, activity) {
+            activity?.let { WindowCompat.getInsetsController(it.window, view) }
+        }
+    val heroOwnsStatusBar = isActive && !statusBarSpacing
+    SideEffect {
+        controller?.let { bar ->
+            bar.isAppearanceLightStatusBars = !heroOwnsStatusBar && !isDarkHomeSurface
+        }
+    }
+    // Remembered so dispose restores the latest appearance instead of the first composed one.
+    val currentIsDarkHomeSurface by rememberUpdatedState(isDarkHomeSurface)
+    DisposableEffect(controller) {
+        onDispose {
+            controller?.let { bar ->
+                bar.isAppearanceLightStatusBars = !currentIsDarkHomeSurface
+            }
+        }
+    }
 }
 
 @Composable

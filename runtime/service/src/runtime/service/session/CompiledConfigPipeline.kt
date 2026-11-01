@@ -25,14 +25,15 @@ import com.github.yumeyucca.yumebox.core.bridge.Compiler
 import com.github.yumeyucca.yumebox.core.model.CompileRequest
 import com.github.yumeyucca.yumebox.core.model.CompileResult
 import com.github.yumeyucca.yumebox.core.model.OverrideSpec
+import com.github.yumeyucca.yumebox.core.util.PersistedJson
 import com.github.yumeyucca.yumebox.core.util.YamlCodec
 import com.github.yumeyucca.yumebox.data.model.BuiltInOverrideCatalog
+import com.github.yumeyucca.yumebox.data.model.OverrideContentType
 import com.github.yumeyucca.yumebox.data.store.BuiltInOverrideFileStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
 import java.io.File
 import java.security.MessageDigest
 
@@ -43,10 +44,13 @@ class CompiledConfigPipeline(private val context: Context) {
     fun resolveOverrideSpecs(profileUuid: String): List<OverrideSpec> {
         val overridesDir = context.filesDir.resolve("overrides")
         val metadata = loadMetadataIndex(overridesDir.resolve("metadata.yaml"))
+        val chain = metadata.profileChains[profileUuid]
+        val disabledOverrideIds = chain?.disabledOverrideIds.orEmpty().toSet()
         val userOverrides =
-            metadata.profileChains[profileUuid]
+            chain
                 ?.overrideIds
                 .orEmpty()
+                .filterNot(disabledOverrideIds::contains)
                 .filterNot { it.startsWith(LEGACY_PRESET_PREFIX) || it.startsWith(INTERNAL_RUNTIME_PREFIX) }
                 .distinct()
                 .map { overrideId ->
@@ -66,10 +70,10 @@ class CompiledConfigPipeline(private val context: Context) {
     suspend fun compile(spec: RuntimeSpec): CompileResult =
         withContext(Dispatchers.Default) {
             val result =
-                compilerJson.decodeFromString(
+                PersistedJson.decodeFromString(
                     CompileResult.serializer(),
                     Compiler.nativeCompile(
-                        compilerJson.encodeToString(CompileRequest.serializer(), buildRequest(spec))
+                        PersistedJson.encodeToString(CompileRequest.serializer(), buildRequest(spec))
                     ),
                 )
             check(result.success) { result.error ?: "override compile failed" }
@@ -114,12 +118,13 @@ class CompiledConfigPipeline(private val context: Context) {
         if (BuiltInOverrideCatalog.find(overrideId) != null) {
             builtInOverrideFiles.sync(overrideId)?.let { return it }
         }
-        val expectedExtension = metadataIndex.configs[overrideId]?.contentType?.toOverrideExtension()
+        val expectedExtension =
+            metadataIndex.configs[overrideId]?.contentType?.let(OverrideContentType::fromExtension)?.extension
         if (expectedExtension != null) {
             val expectedFile = overridesDir.resolve("configs/$overrideId.$expectedExtension")
             if (expectedFile.exists()) return expectedFile
         }
-        return userOverrideExtensions
+        return OverrideContentType.knownExtensions
             .asSequence()
             .map { extension -> overridesDir.resolve("configs/$overrideId.$extension") }
             .firstOrNull(File::exists)
@@ -176,26 +181,13 @@ class CompiledConfigPipeline(private val context: Context) {
     @Serializable private data class ConfigMetadataPayload(val contentType: String = "yaml")
 
     @Serializable
-    private data class ProfileChainPayload(val overrideIds: List<String> = emptyList())
+    private data class ProfileChainPayload(
+        val overrideIds: List<String> = emptyList(),
+        val disabledOverrideIds: List<String> = emptyList(),
+    )
 
     private companion object {
-        private val compilerJson =
-            Json {
-                ignoreUnknownKeys = true
-                encodeDefaults = true
-                coerceInputValues = true
-            }
-        private val userOverrideExtensions = listOf("yaml", "yml", "js")
         const val INTERNAL_RUNTIME_PREFIX = "__runtime__"
         const val LEGACY_PRESET_PREFIX = "preset-"
     }
 }
-
-private fun String.toOverrideExtension(): String? =
-    when (lowercase()) {
-        "yaml",
-        "yml" -> "yaml"
-        "js",
-        "javascript" -> "js"
-        else -> null
-    }
