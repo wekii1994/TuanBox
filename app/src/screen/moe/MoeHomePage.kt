@@ -270,26 +270,31 @@ fun MoeHomePage(
             }
         }
     val openTrafficStatisticsPage: () -> Unit =
-        remember(detailNavigator, navigator) {
-            {
-                (detailNavigator ?: navigator).push(Route.TrafficStatistics)
-            }
+        remember(rootNavigator, detailNavigator) {
+            val targetNavigator = detailNavigator ?: rootNavigator
+            { targetNavigator.push(Route.TrafficStatistics) }
         }
+    val currentOnOpenPanel by rememberUpdatedState(onOpenPanel)
+    val currentHandlePageChange by rememberUpdatedState(handlePageChange)
+    val currentOpenSettingsPage by rememberUpdatedState(openSettingsPage)
+    val currentLaunchWallpaperPicker by rememberUpdatedState(launchWallpaperPicker)
+    val currentOpenTrafficStatisticsPage by rememberUpdatedState(openTrafficStatisticsPage)
+
     val homeSidebarIcons =
-        remember(onOpenPanel, handlePageChange, openSettingsPage, launchWallpaperPicker, openTrafficStatisticsPage) {
+        remember {
             listOf(
-                MoeSidebarIconItem(Yume.Zashboard) { onOpenPanel?.invoke() },
+                MoeSidebarIconItem(Yume.Zashboard) { currentOnOpenPanel?.invoke() },
                 MoeSidebarIconItem(Yume.PackageCheck) {
-                    handlePageChange(BottomBarDestination.Config)
+                    currentHandlePageChange(BottomBarDestination.Config)
                 },
-                MoeSidebarIconItem(Yume.Bolt) { openSettingsPage() },
+                MoeSidebarIconItem(Yume.Bolt) { currentOpenSettingsPage() },
                 MoeSidebarIconItem(Yume.Palette) {
                     hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
-                    launchWallpaperPicker()
+                    currentLaunchWallpaperPicker()
                 },
                 MoeSidebarIconItem(Yume.Activity) {
                     hapticFeedback.performHapticFeedback(HapticFeedbackType.VirtualKey)
-                    openTrafficStatisticsPage()
+                    currentOpenTrafficStatisticsPage()
                 },
             )
         }

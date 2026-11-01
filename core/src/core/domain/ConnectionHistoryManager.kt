@@ -52,6 +52,12 @@ object ConnectionHistoryManager {
         }
     }
 
+    fun findClosedConnection(id: String): ConnectionInfo? {
+        synchronized(lock) {
+            return _closedConnections.firstOrNull { it.id == id }
+        }
+    }
+
     fun clear() {
         synchronized(lock) {
             _closedConnections.clear()

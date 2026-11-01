@@ -63,22 +63,24 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 data class ClassicThemeColorPreset(
     val name: String,
     val argb: Long,
-    val hex: String,
-)
+) {
+    val hex: String
+        get() = "#${(argb and 0x00FFFFFFL).toString(16).padStart(6, '0').uppercase()}"
+}
 
 val CLASSIC_THEME_PRESETS = listOf(
-    ClassicThemeColorPreset("极光青", DEFAULT_THEME_SEED_ARGB, "#016888"),
-    ClassicThemeColorPreset("蔚蓝海洋", 0xFF1976D2L, "#1976D2"),
-    ClassicThemeColorPreset("晴朗天蓝", 0xFF0288D1L, "#0288D1"),
-    ClassicThemeColorPreset("薄荷翠绿", 0xFF2E7D32L, "#2E7D32"),
-    ClassicThemeColorPreset("清爽青碧", 0xFF00897BL, "#00897B"),
-    ClassicThemeColorPreset("落日暖橙", 0xFFE65100L, "#E65100"),
-    ClassicThemeColorPreset("蜜柑琥珀", 0xFFF57C00L, "#F57C00"),
-    ClassicThemeColorPreset("樱花粉", 0xFFD81B60L, "#D81B60"),
-    ClassicThemeColorPreset("梦幻紫", 0xFF7B1FA2L, "#7B1FA2"),
-    ClassicThemeColorPreset("深邃靛蓝", 0xFF303F9FL, "#303F9F"),
-    ClassicThemeColorPreset("中国正红", 0xFFC62828L, "#C62828"),
-    ClassicThemeColorPreset("极简玄灰", 0xFF37474FL, "#37474F"),
+    ClassicThemeColorPreset("极光青", DEFAULT_THEME_SEED_ARGB),
+    ClassicThemeColorPreset("蔚蓝海洋", 0xFF1976D2L),
+    ClassicThemeColorPreset("晴朗天蓝", 0xFF0288D1L),
+    ClassicThemeColorPreset("薄荷翠绿", 0xFF2E7D32L),
+    ClassicThemeColorPreset("清爽青碧", 0xFF00897BL),
+    ClassicThemeColorPreset("落日暖橙", 0xFFE65100L),
+    ClassicThemeColorPreset("蜜柑琥珀", 0xFFF57C00L),
+    ClassicThemeColorPreset("樱花粉", 0xFFD81B60L),
+    ClassicThemeColorPreset("梦幻紫", 0xFF7B1FA2L),
+    ClassicThemeColorPreset("深邃靛蓝", 0xFF303F9FL),
+    ClassicThemeColorPreset("中国正红", 0xFFC62828L),
+    ClassicThemeColorPreset("极简玄灰", 0xFF37474FL),
 )
 
 @Composable

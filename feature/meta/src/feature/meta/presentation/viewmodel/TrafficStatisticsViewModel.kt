@@ -112,6 +112,19 @@ private data class ConnectionDetails(
     val targetSites: List<TargetSiteRecord> = emptyList(),
 )
 
+private data class RangeState(
+    val range: StatisticsTimeRange,
+    val barIndex: Int,
+    val dailyTotals: List<DailyTrafficSummary>,
+)
+
+private data class ParsedConnection(
+    val connection: ConnectionInfo,
+    val startMillis: Long,
+    val displayDestination: String,
+    val normalizedDomain: NormalizedDomain,
+)
+
 class TrafficStatisticsViewModel(
     private val trafficStatisticsStore: TrafficStatisticsStore,
     private val context: Context,
@@ -125,18 +138,27 @@ class TrafficStatisticsViewModel(
     private val liveConnectionsFlow: Flow<Pair<List<ConnectionInfo>, List<ConnectionInfo>>> =
         refreshTrigger.flatMapLatest {
             flow {
+                runCatching { RuntimeAccess.connect(context) }
+                var consecutiveFailures = 0
                 while (true) {
-                    val active =
-                        runCatching {
-                            RuntimeAccess.connect(context)
-                            val snapshot = RuntimeAccess.core().queryConnections()
-                            ConnectionHistoryManager.updateConnections(snapshot.connections)
-                            snapshot.connections
-                        }
-                            .getOrDefault(emptyList())
-                    val closed = ConnectionHistoryManager.getClosedConnections()
-                    emit(Pair(active, closed))
-                    delay(2000L)
+                    val result = runCatching {
+                        val snapshot = RuntimeAccess.core().queryConnections()
+                        ConnectionHistoryManager.updateConnections(snapshot.connections)
+                        snapshot.connections
+                    }
+                    if (result.isSuccess) {
+                        consecutiveFailures = 0
+                        val active = result.getOrThrow()
+                        val closed = ConnectionHistoryManager.getClosedConnections()
+                        emit(Pair(active, closed))
+                        delay(2000L)
+                    } else {
+                        consecutiveFailures++
+                        val backoff = (2000L shl consecutiveFailures.coerceAtMost(4)).coerceAtMost(30000L)
+                        val closed = ConnectionHistoryManager.getClosedConnections()
+                        emit(Pair(emptyList(), closed))
+                        delay(backoff)
+                    }
                 }
             }
         }.flowOn(Dispatchers.IO)
@@ -147,27 +169,30 @@ class TrafficStatisticsViewModel(
             trafficStatisticsStore.getDailyTotalsFlow(range)
         }
 
+    private val weekDailyTotalsFlow = trafficStatisticsStore.getDailyTotalsFlow(StatisticsTimeRange.WEEK)
+    private val hourlyTotalsFlow = trafficStatisticsStore.getTodayHourlyTotalsFlow()
+
     private val connectionDetailsFlow: Flow<ConnectionDetails> =
         liveConnectionsFlow
             .map { (activeConns, closedConns) ->
                 buildConnectionDetails(activeConns, closedConns)
             }
             .distinctUntilChanged()
-            .flowOn(Dispatchers.Default)
+            .flowOn(Dispatchers.IO)
 
     val uiState: StateFlow<TrafficStatisticsUiState> =
         combine(
             combine(selectedTimeRange, selectedBarIndex, dailyTotalsFlow) { range, barIndex, dailyTotals ->
-                Triple(range, barIndex, dailyTotals)
+                RangeState(range, barIndex, dailyTotals)
             },
             connectionDetailsFlow,
-            trafficStatisticsStore.getDailyTotalsFlow(StatisticsTimeRange.WEEK),
-            trafficStatisticsStore.getTodayHourlyTotalsFlow(),
-        ) { (range, barIndex, dailyTotals), connectionDetails, weekDailyTotals, hourlyTotals ->
+            weekDailyTotalsFlow,
+            hourlyTotalsFlow,
+        ) { rangeState, connectionDetails, weekDailyTotals, hourlyTotals ->
             buildUiState(
-                range = range,
-                selectedBarIndex = barIndex,
-                dailyTotals = dailyTotals,
+                range = rangeState.range,
+                selectedBarIndex = rangeState.barIndex,
+                dailyTotals = rangeState.dailyTotals,
                 weekDailyTotals = weekDailyTotals,
                 hourlyTotals = hourlyTotals,
                 recentRequests = connectionDetails.recentRequests,
@@ -208,7 +233,18 @@ class TrafficStatisticsViewModel(
             .map { conn -> conn to parseConnectionStartMillis(conn.start) }
             .sortedByDescending { it.second }
 
-        val recentRequests = allWithTimestamp.take(30).map { (conn, startMillis) ->
+        val parsedConnections = allWithTimestamp.map { (conn, startMillis) ->
+            val dest = conn.extractDisplayDestination()
+            ParsedConnection(
+                connection = conn,
+                startMillis = startMillis,
+                displayDestination = dest,
+                normalizedDomain = DomainClassifier.parse(dest),
+            )
+        }
+
+        val recentRequests = parsedConnections.take(30).map { parsedConn ->
+            val conn = parsedConn.connection
             val resolvedApp = appIdentityResolver.resolve(conn.metadata)
             val hasValidApp = resolvedApp.packageName != null &&
                     resolvedApp.appName.isNotBlank() &&
@@ -216,8 +252,8 @@ class TrafficStatisticsViewModel(
                     resolvedApp.appKey != AppIdentityResolver.UNKNOWN_APP_KEY
 
             val sourceAppName = if (hasValidApp) resolvedApp.appName else null
-            val dest = conn.extractDisplayDestination()
-            val parsed = DomainClassifier.parse(dest)
+            val dest = parsedConn.displayDestination
+            val parsed = parsedConn.normalizedDomain
             val port = conn.metadata["destinationPort"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
             val portSuffix = if (port.isNotBlank() && !dest.contains(':')) ":$port" else ""
 
@@ -259,15 +295,20 @@ class TrafficStatisticsViewModel(
                 serviceTag = parsed.brandEntity.serviceTag ?: parsed.serviceTag,
                 displayHost = displayHost,
                 subDetail = subDetail,
-                startMillis = startMillis,
+                startMillis = parsedConn.startMillis,
             )
         }
 
-        val targetSites = allWithTimestamp
-            .mapNotNull { (conn, startMillis) ->
+        val targetSites = parsedConnections
+            .mapNotNull { parsedConn ->
+                val conn = parsedConn.connection
                 val site = conn.extractTargetSite() ?: return@mapNotNull null
-                val parsed = DomainClassifier.parse(site)
-                Triple(parsed, conn.upload, conn.download) to startMillis
+                val parsed = if (site == parsedConn.displayDestination) {
+                    parsedConn.normalizedDomain
+                } else {
+                    DomainClassifier.parse(site)
+                }
+                Triple(parsed, conn.upload, conn.download) to parsedConn.startMillis
             }
             .groupBy { it.first.first.brandEntity.entityKey }
             .map { (entityKey, entries) ->
@@ -489,9 +530,8 @@ object DomainClassifier {
 
     private val IPV4_REGEX = Regex("""^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$""")
 
-    private val BRAND_MAP = linkedMapOf<String, BrandEntity>()
-
-    init {
+    private val BRAND_MAP: Map<String, BrandEntity> by lazy {
+        val map = HashMap<String, BrandEntity>(128)
         fun registerBrand(
             entityKey: String,
             displayName: String,
@@ -501,7 +541,7 @@ object DomainClassifier {
         ) {
             val entity = BrandEntity(entityKey, displayName, primaryDomain, serviceTag, isIp = false)
             for (domain in domains) {
-                BRAND_MAP[domain.lowercase()] = entity
+                map[domain.lowercase()] = entity
             }
         }
 
@@ -598,6 +638,7 @@ object DomainClassifier {
             "huawei", "华为服务", "huawei.com", "HarmonyOS",
             "huawei.com", "hicloud.com", "dbankcdn.com", "honor.com"
         )
+        map
     }
 
     fun parse(rawHostWithPort: String): NormalizedDomain {
@@ -667,8 +708,10 @@ object DomainClassifier {
         }
     }
 
-    private fun isIpv6(s: String): Boolean =
-        s.count { it == ':' } >= 2
+    private fun isIpv6(s: String): Boolean {
+        if (s.count { it == ':' } < 2) return false
+        return s.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' || it == ':' || it == '.' }
+    }
 
     private fun isPrivateIp(ip: String): Boolean {
         if (isIpv6(ip)) {

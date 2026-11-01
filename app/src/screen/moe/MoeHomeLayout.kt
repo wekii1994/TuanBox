@@ -18,6 +18,7 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -26,6 +27,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -328,7 +330,11 @@ private fun BoxScope.MoeHeroOverlay(
             MoeTrafficStrip(
                 downloadSpeed = state.traffic.download,
                 uploadSpeed = state.traffic.upload,
-                modifier = Modifier.clickable(onClick = actions.openTrafficStatistics),
+                modifier = Modifier.clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = actions.openTrafficStatistics,
+                ),
             )
             MoeHomeInfoPanel(
                 serverName = state.selectedServerName.takeIf { state.isRunning },

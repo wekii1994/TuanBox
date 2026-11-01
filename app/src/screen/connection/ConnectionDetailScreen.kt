@@ -52,7 +52,7 @@ fun ConnectionDetailScreen(
     val scrollBehavior = MiuixScrollBehavior()
     val staged = remember(connectionId) {
         ConnectionDetailHolder.connection?.takeIf { it.id == connectionId }
-            ?: ConnectionHistoryManager.getClosedConnections().firstOrNull { it.id == connectionId }
+            ?: ConnectionHistoryManager.findClosedConnection(connectionId)
     }
 
     LaunchedEffect(connectionId, canInterrupt) { viewModel.start(connectionId, canInterrupt, staged) }

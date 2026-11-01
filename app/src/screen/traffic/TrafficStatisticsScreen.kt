@@ -386,9 +386,7 @@ private fun RecentRequestItemCard(
     val effectiveHost = remember(record.displayHost, connection) {
         record.displayHost.ifBlank { connection.extractDisplayDestination() }
     }
-    val timeText = remember(record.startMillis) {
-        formatMillisTime(record.startMillis)
-    }
+    val timeText = formatMillisTime(record.startMillis)
 
     Row(
         modifier = Modifier
@@ -475,9 +473,7 @@ private fun TargetSiteItemCard(
     val spacing = AppTheme.spacing
     val radii = AppTheme.radii
     val progress = (record.totalBytes.toFloat() / maxBytes.toFloat()).coerceIn(0.02f, 1f)
-    val timeText = remember(record.lastSeenAt) {
-        formatMillisTime(record.lastSeenAt)
-    }
+    val timeText = formatMillisTime(record.lastSeenAt)
 
     Row(
         modifier = Modifier
@@ -577,15 +573,25 @@ private fun TargetSiteItemCard(
 }
 
 @Composable
-private fun IpBadge() {
+private fun BadgeBox(
+    modifier: Modifier = Modifier,
+    backgroundColor: androidx.compose.ui.graphics.Color,
+    content: @Composable BoxScope.() -> Unit,
+) {
     val radii = AppTheme.radii
     Box(
-        modifier = Modifier
+        modifier = modifier
             .size(24.dp)
             .clip(RoundedCornerShape(radii.radius8))
-            .background(MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f)),
+            .background(backgroundColor),
         contentAlignment = Alignment.Center,
-    ) {
+        content = content,
+    )
+}
+
+@Composable
+private fun IpBadge() {
+    BadgeBox(backgroundColor = MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f)) {
         Text(
             text = "IP",
             style = MiuixTheme.textStyles.footnote1.copy(fontSize = 10.sp),
@@ -597,7 +603,6 @@ private fun IpBadge() {
 
 @Composable
 private fun RankBadge(rank: Int) {
-    val radii = AppTheme.radii
     val isTop3 = rank <= 3
     val bgColor = if (isTop3) {
         MiuixTheme.colorScheme.primary.copy(alpha = 0.15f)
@@ -610,13 +615,7 @@ private fun RankBadge(rank: Int) {
         MiuixTheme.colorScheme.onSurfaceVariantSummary
     }
 
-    Box(
-        modifier = Modifier
-            .size(24.dp)
-            .clip(RoundedCornerShape(radii.radius8))
-            .background(bgColor),
-        contentAlignment = Alignment.Center,
-    ) {
+    BadgeBox(backgroundColor = bgColor) {
         Text(
             text = "$rank",
             style = MiuixTheme.textStyles.footnote1.copy(fontSize = 11.sp),

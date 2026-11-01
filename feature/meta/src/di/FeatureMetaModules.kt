@@ -37,6 +37,7 @@ val featureMetaViewModelModule = module {
     single { CustomRoutingBootstrapper(get()) }
     viewModel { ConnectionViewModel(androidContext()) }
     viewModel { ConnectionDetailViewModel(androidContext()) }
+    // androidContext() is provided for AppIdentityResolver to resolve app names and icons
     viewModel { TrafficStatisticsViewModel(get<TrafficStatisticsStore>(), androidContext()) }
     viewModel { CustomRoutingViewModel(get(), get(), get()) }
 }

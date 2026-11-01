@@ -122,11 +122,10 @@ jobs:
         with:
           tag_name: ${{ inputs.release_tag }}
           name: ${{ inputs.release_name }}
-          body: ${{ inputs.body }}
+          body: ${{ inputs.body != '' && inputs.body || steps.body.outputs.notes }}
           prerelease: ${{ inputs.prerelease }}
           draft: false
           target_commitish: ${{ github.sha }}
-          body: ${{ steps.body.outputs.notes }}
           overwrite_files: true
           fail_on_unmatched_files: true
           make_latest: ${{ inputs.channel == 'stable' }}
