@@ -105,7 +105,7 @@ fun TrafficStatisticsScreen(navigator: Navigator = LocalNavigator.current) {
                         }
                     ) {
                         Icon(
-                            imageVector = MiuixIcons.extended.Delete,
+                            imageVector = MiuixIcons.Delete,
                             contentDescription = "清空统计数据",
                             tint = MiuixTheme.colorScheme.onSurface,
                         )
