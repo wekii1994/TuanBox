@@ -21,5 +21,5 @@
 package com.github.yumeyucca.yumebox.analytics
 
 /** HTTPS endpoint of the YumeBox anonymous analytics Worker. */
-const val ANALYTICS_ENDPOINT = "https://analytics.yumebox.yumeyuka.moe"
+const val ANALYTICS_ENDPOINT = ""
 
