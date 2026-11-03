@@ -103,7 +103,7 @@ class ConnectionViewModel(
         }
         // When active backend changes, clear serviceKey filter
         viewModelScope.launch {
-            remoteControllerStore.activeBackendId.collect {
+            remoteControllerStore.activeBackendId.state.collect {
                 _state.update { it.copy(serviceKey = null) }
             }
         }
