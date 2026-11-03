@@ -22,84 +22,65 @@
 
 package com.github.yumeyucca.yumebox.screen.traffic
 
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.repeatOnLifecycle
-import kotlinx.coroutines.delay
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import com.github.yumeyucca.yumebox.common.util.ByteFormatter
 import com.github.yumeyucca.yumebox.common.util.toast
-import com.github.yumeyucca.yumebox.data.model.StatisticsTimeRange
-import com.github.yumeyucca.yumebox.feature.meta.presentation.viewmodel.RecentRequestRecord
-import com.github.yumeyucca.yumebox.feature.meta.presentation.viewmodel.TargetSiteRecord
-import com.github.yumeyucca.yumebox.feature.meta.presentation.viewmodel.TrafficStatisticsUiState
-import com.github.yumeyucca.yumebox.feature.meta.presentation.viewmodel.TrafficStatisticsViewModel
-import com.github.yumeyucca.yumebox.feature.meta.presentation.viewmodel.extractDisplayDestination
+import com.github.yumeyucca.yumebox.core.locale.YumeTxt
+import com.github.yumeyucca.yumebox.data.trafficv2.*
+import com.github.yumeyucca.yumebox.feature.meta.presentation.viewmodel.*
 import com.github.yumeyucca.yumebox.presentation.component.*
 import com.github.yumeyucca.yumebox.presentation.navigation.Route
 import com.github.yumeyucca.yumebox.presentation.theme.AppTheme
 import com.github.yumeyucca.yumebox.presentation.theme.UiDp
-import com.github.yumeyucca.yumebox.screen.connection.ConnectionDetailHolder
 import org.koin.androidx.compose.koinViewModel
-import com.github.yumeyucca.yumebox.core.locale.YumeTxt
-import top.yukonga.miuix.kmp.basic.HorizontalDivider
-import top.yukonga.miuix.kmp.basic.Icon
-import top.yukonga.miuix.kmp.basic.IconButton
-import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
-import top.yukonga.miuix.kmp.basic.Text
+import org.koin.compose.koinInject
+import top.yukonga.miuix.kmp.basic.*
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import kotlin.math.abs
-
-private enum class TrafficDetailSection(val title: String) {
-    RECENT_REQUESTS("最近连接"),
-    TARGET_SITES("目标服务"),
-}
+import java.util.Locale
 
 @Composable
 fun TrafficStatisticsScreen(navigator: Navigator = LocalNavigator.current) {
-    val viewModel = koinViewModel<TrafficStatisticsViewModel>()
+    val viewModel = koinViewModel<TrafficStatisticsV2ViewModel>()
+    val coordinator = koinInject<TrafficRuntimeCoordinator>()
     val scrollBehavior = MiuixScrollBehavior()
     val context = LocalContext.current
     val spacing = AppTheme.spacing
 
-    val uiState by viewModel.overviewState.collectAsStateWithLifecycle()
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    val liveTraffic by coordinator.live.collectAsStateWithLifecycle()
     val lifecycleOwner = LocalLifecycleOwner.current
+
     LaunchedEffect(viewModel, lifecycleOwner) {
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-            viewModel.notices.collect { context.toast(it) }
+            viewModel.messages.collect { context.toast(it) }
         }
     }
-    var selectedDetailSection by rememberSaveable { mutableStateOf(TrafficDetailSection.RECENT_REQUESTS) }
 
-    val timeRanges = StatisticsTimeRange.entries
-    val selectedRangeIndex = timeRanges.indexOf(uiState.selectedTimeRange).coerceAtLeast(0)
-    val isToday = uiState.selectedTimeRange == StatisticsTimeRange.TODAY
+    var showClearDialog by rememberSaveable { mutableStateOf(false) }
+    var selectedServiceKey by rememberSaveable { mutableStateOf<String?>(null) }
+    var expanded by rememberSaveable(state.selection.range, state.selection.metric) { mutableStateOf(false) }
+
+    val timeRanges = listOf(ServiceRange.TODAY to "今日", ServiceRange.WEEK to "近 7 天")
+    val selectedRangeIndex = if (state.selection.range == ServiceRange.WEEK) 1 else 0
 
     GlassScaffold(
         topBar = {
@@ -107,20 +88,16 @@ fun TrafficStatisticsScreen(navigator: Navigator = LocalNavigator.current) {
                 title = YumeTxt.TrafficStatistics.Title,
                 scrollBehavior = scrollBehavior,
                 actions = {
-                    IconButton(
-                        onClick = {
-                            viewModel.clearAllStatistics()
-                        }
-                    ) {
+                    IconButton(onClick = { showClearDialog = true }) {
                         Icon(
                             imageVector = MiuixIcons.Delete,
                             contentDescription = "清空统计数据",
                             tint = MiuixTheme.colorScheme.onSurface,
                         )
                     }
-                }
+                },
             )
-        }
+        },
     ) { innerPadding ->
         StandalonePageList(
             scrollBehavior = scrollBehavior,
@@ -128,147 +105,70 @@ fun TrafficStatisticsScreen(navigator: Navigator = LocalNavigator.current) {
         ) {
             stickySegmentedTabs(
                 key = "__time_range_tabs__",
-                tabs = timeRanges.map { if (it == StatisticsTimeRange.WEEK) "近 7 天" else it.label },
+                tabs = timeRanges.map { it.second },
                 selectedTabIndex = selectedRangeIndex,
                 onTabSelected = { index ->
-                    timeRanges.getOrNull(index)?.let(viewModel::setTimeRange)
+                    viewModel.selectRange(timeRanges[index].first)
                 },
                 tabRowPadding = spacing.screenHorizontal,
             )
 
             item(key = "overview_card") {
                 Spacer(modifier = Modifier.height(spacing.space12))
-                OverviewSectionCard(
-                    uiState = uiState,
-                    isToday = isToday,
-                )
-            }
-
-            item(key = "details_card") {
-                Spacer(modifier = Modifier.height(spacing.space12))
-                LiveDetailsSection(
-                    viewModel = viewModel,
-                    selectedSection = selectedDetailSection,
-                    onSectionSelect = { selectedDetailSection = it },
-                    navigator = navigator,
-                )
-            }
-
-            item(key = "bottom_spacer") {
-                Spacer(modifier = Modifier.height(spacing.space24))
-            }
-        }
-    }
-}
-
-@Composable
-private fun OverviewSectionCard(
-    uiState: TrafficStatisticsUiState,
-    isToday: Boolean,
-) {
-    val spacing = AppTheme.spacing
-    val componentSizes = AppTheme.sizes
-    val radii = AppTheme.radii
-
-    AppCard(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(spacing.space16),
-            verticalArrangement = Arrangement.spacedBy(spacing.space16),
-        ) {
-            // Upload & Download Summary
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(spacing.space4)) {
-                    Text(
-                        text = if (isToday) "今日上传" else "近 7 天上传",
-                        style = MiuixTheme.textStyles.footnote1,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    )
-                    Text(
-                        text = ByteFormatter.format(uiState.summary.totalUpload),
-                        style = MiuixTheme.textStyles.title2,
-                        fontWeight = FontWeight.Bold,
-                        color = MiuixTheme.colorScheme.onSurface,
-                    )
-                }
-
-                Column(
-                    horizontalAlignment = Alignment.End,
-                    verticalArrangement = Arrangement.spacedBy(spacing.space4),
-                ) {
-                    Text(
-                        text = if (isToday) "今日下载" else "近 7 天下载",
-                        style = MiuixTheme.textStyles.footnote1,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    )
-                    Text(
-                        text = ByteFormatter.format(uiState.summary.totalDownload),
-                        style = MiuixTheme.textStyles.title2,
-                        fontWeight = FontWeight.Bold,
-                        color = MiuixTheme.colorScheme.primary,
-                    )
-                }
-            }
-
-            HorizontalDivider(
-                thickness = componentSizes.thinDividerThickness,
-                color = MiuixTheme.colorScheme.outline.copy(alpha = AppTheme.opacity.outline),
-            )
-
-            // Dynamic Context Bar
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                if (isToday) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(spacing.space8),
-                        verticalAlignment = Alignment.CenterVertically,
+                AppCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(spacing.space16),
+                        verticalArrangement = Arrangement.spacedBy(spacing.space16),
                     ) {
-                        Text(
-                            text = "今日累计 · ${ByteFormatter.format(uiState.todayTotal)}",
-                            style = MiuixTheme.textStyles.body2,
-                            fontWeight = FontWeight.Medium,
-                            color = MiuixTheme.colorScheme.onSurface,
+                        TrafficMetricChoices(
+                            total = state.page.total,
+                            selected = state.selection.metric,
+                            onSelect = viewModel::selectMetric,
                         )
-                        if (uiState.yesterdayTotal > 0L) {
-                            val diffText = if (uiState.trafficDifference >= 0) {
-                                "+${ByteFormatter.format(uiState.trafficDifference)}"
-                            } else {
-                                "-${ByteFormatter.format(abs(uiState.trafficDifference))}"
+
+                        HorizontalDivider(
+                            thickness = AppTheme.sizes.thinDividerThickness,
+                            color = MiuixTheme.colorScheme.outline.copy(alpha = AppTheme.opacity.outline),
+                        )
+
+                        val zone = remember { ZoneId.systemDefault() }
+                        val today = remember { LocalDate.now(zone) }
+                        val isToday = state.selection.range == ServiceRange.TODAY
+                        val firstDate = if (isToday) today else today.minusDays(6)
+                        val days = if (isToday) 1 else 7
+                        val points = remember(state.rows, firstDate, days, zone, isToday) {
+                            trafficChartPoints(state.rows, firstDate, days, zone, daily = !isToday)
+                        }
+                        val chartBars = remember(points, state.selection.metric) {
+                            points.map { point ->
+                                BarChartItem(
+                                    label = point.label,
+                                    value = point.bytes.value(state.selection.metric),
+                                )
                             }
+                        }
+                        TrafficBarChart(
+                            items = chartBars,
+                            animationKey = Pair(state.selection.range, state.selection.metric),
+                            showSelectionTip = true,
+                            tipTitleFor = { bar -> "${bar.label} 流量" },
+                            chartHeight = if (isToday) AppTheme.sizes.trafficChartHeight else AppTheme.sizes.trafficBarChartHeight,
+                            barWidth = if (isToday) UiDp.dp8 else AppTheme.sizes.trafficBarWidth,
+                        )
+
+                        if (state.selection.range == ServiceRange.TODAY && !state.page.legacyWithoutHour.empty) {
                             Text(
-                                text = "较昨日 $diffText",
+                                text = "部分旧记录只有每日总量，未分配到小时图表",
                                 style = MiuixTheme.textStyles.footnote1,
-                                color = if (uiState.trafficDifference > 0) {
-                                    MiuixTheme.colorScheme.primary
-                                } else {
-                                    MiuixTheme.colorScheme.onSurfaceVariantSummary
-                                },
+                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                             )
                         }
-                    }
-                } else {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = "近 7 天累计 · ${ByteFormatter.format(uiState.weekTotal)}",
-                            style = MiuixTheme.textStyles.body2,
-                            fontWeight = FontWeight.Medium,
-                            color = MiuixTheme.colorScheme.onSurface,
-                        )
-                        if (uiState.chartAverage > 0L) {
+                        val statusMsg = state.error ?: liveTraffic.error
+                        if (statusMsg != null) {
                             Text(
-                                text = "日均 ${ByteFormatter.format(uiState.chartAverage)}",
+                                text = statusMsg,
                                 style = MiuixTheme.textStyles.footnote1,
                                 color = MiuixTheme.colorScheme.primary,
                             )
@@ -277,485 +177,360 @@ private fun OverviewSectionCard(
                 }
             }
 
-            // Chart
-            TrafficBarChart(
-                items = uiState.chartBars,
-                animationKey = uiState.selectedTimeRange,
-                averageValue = uiState.chartAverage.takeIf { !isToday && it > 0L },
-                averageLabel = YumeTxt.TrafficStatistics.Summary.Average.takeIf { !isToday && uiState.chartAverage > 0L },
-                showSelectionTip = !isToday,
-                tipTitleFor = { bar ->
-                    YumeTxt.TrafficStatistics.Summary.DayTrafficTip.format(bar.label)
-                },
-                chartHeight = if (isToday) componentSizes.trafficChartHeight else componentSizes.trafficBarChartHeight,
-                barWidth = if (isToday) UiDp.dp8 else componentSizes.trafficBarWidth,
-            )
-        }
-    }
-}
-
-@Composable
-private fun LiveDetailsSection(
-    viewModel: TrafficStatisticsViewModel,
-    selectedSection: TrafficDetailSection,
-    onSectionSelect: (TrafficDetailSection) -> Unit,
-    navigator: Navigator,
-) {
-    val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val lifecycleOwner = LocalLifecycleOwner.current
-    val nowMillis by produceState(System.currentTimeMillis(), lifecycleOwner) {
-        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-            while (true) {
-                value = System.currentTimeMillis()
-                delay(30_000L)
+            item(key = "services_card_header") {
+                Spacer(modifier = Modifier.height(spacing.space12))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = spacing.space16),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "目标服务",
+                        style = MiuixTheme.textStyles.title3,
+                        fontWeight = FontWeight.Bold,
+                        color = MiuixTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = when (state.selection.metric) {
+                            TrafficMetric.DOWNLOAD -> "按下载排序"
+                            TrafficMetric.UPLOAD -> "按上传排序"
+                            TrafficMetric.TOTAL -> "按合计排序"
+                        },
+                        style = MiuixTheme.textStyles.footnote1,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    )
+                }
             }
-        }
-    }
-    DetailsSectionCard(state, selectedSection, onSectionSelect, navigator, nowMillis)
-}
 
-@Composable
-private fun DetailsSectionCard(
-    uiState: TrafficStatisticsUiState,
-    selectedSection: TrafficDetailSection,
-    onSectionSelect: (TrafficDetailSection) -> Unit,
-    navigator: Navigator,
-    nowMillis: Long,
-) {
-    val spacing = AppTheme.spacing
-    val componentSizes = AppTheme.sizes
-
-    AppCard(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            SegmentedTabRow(
-                tabs = TrafficDetailSection.entries.map { it.title },
-                selectedTabIndex = selectedSection.ordinal,
-                onTabSelected = { index ->
-                    TrafficDetailSection.entries.getOrNull(index)?.let(onSectionSelect)
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = spacing.space16, vertical = spacing.space12),
-            )
-
-            Text(
-                text = uiState.connectionError ?: "当前连接及最近 100 条关闭记录；流量为连接累计值，与上方时间范围无关",
-                style = MiuixTheme.textStyles.footnote1,
-                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                modifier = Modifier.padding(horizontal = spacing.space16, vertical = spacing.space8),
-            )
-            AnimatedContent(
-                targetState = selectedSection,
-                transitionSpec = {
-                    fadeIn(animationSpec = tween(200)) togetherWith fadeOut(animationSpec = tween(200))
-                },
-                label = "DetailsSectionContent",
-            ) { section ->
-                when (section) {
-                    TrafficDetailSection.RECENT_REQUESTS -> {
-                        if (uiState.recentRequests.isEmpty()) {
-                            EmptyDetailNotice(message = "暂无连接记录")
-                        } else {
-                            Column(modifier = Modifier.fillMaxWidth()) {
-                                uiState.recentRequests.forEachIndexed { index, request ->
-                                    key(request.connection.id) {
-                                        RecentRequestItemCard(
-                                            record = request,
-                                            nowMillis = nowMillis,
-                                            onClick = {
-                                                ConnectionDetailHolder.setup(request.connection)
-                                                navigator.push(
-                                                    Route.ConnectionDetail(
-                                                        connectionId = request.connection.id,
-                                                        canInterrupt = request.isActive,
-                                                    )
-                                                )
-                                            },
-                                        )
-                                        if (index < uiState.recentRequests.lastIndex) {
-                                            HorizontalDivider(
-                                                modifier = Modifier.padding(start = 64.dp, end = spacing.space16),
-                                                thickness = componentSizes.thinDividerThickness,
-                                                color = MiuixTheme.colorScheme.outline.copy(alpha = AppTheme.opacity.outline),
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
+            if (state.loading) {
+                item(key = "services_loading") {
+                    AppCard(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            text = "正在读取统计…",
+                            style = MiuixTheme.textStyles.body2,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            modifier = Modifier.padding(spacing.space16),
+                        )
                     }
-
-                    TrafficDetailSection.TARGET_SITES -> {
-                        if (uiState.targetSites.isEmpty()) {
-                            EmptyDetailNotice(message = "暂无目标站点统计")
-                        } else {
-                            val maxBytes = uiState.targetSites.firstOrNull()?.totalBytes?.coerceAtLeast(1L) ?: 1L
-                            Column(modifier = Modifier.fillMaxWidth()) {
-                                uiState.targetSites.forEachIndexed { index, site ->
-                                    key(site.siteKey) {
-                                        TargetSiteItemCard(
-                                            record = site,
-                                            nowMillis = nowMillis,
-                                            rank = index + 1,
-                                            maxBytes = maxBytes,
-                                        )
-                                        if (index < uiState.targetSites.lastIndex) {
-                                            HorizontalDivider(
-                                                modifier = Modifier.padding(start = UiDp.dp48, end = spacing.space16),
-                                                thickness = componentSizes.thinDividerThickness,
-                                                color = MiuixTheme.colorScheme.outline.copy(alpha = AppTheme.opacity.outline),
-                                            )
-                                        }
-                                    }
+                }
+            } else if (state.page.total.value(state.selection.metric) == 0L) {
+                item(key = "services_empty") {
+                    AppCard(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            text = "当前时段暂无此项流量",
+                            style = MiuixTheme.textStyles.body2,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            modifier = Modifier.padding(spacing.space16),
+                        )
+                    }
+                }
+            } else {
+                item(key = "services_card") {
+                    AppCard(modifier = Modifier.fillMaxWidth()) {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            val metric = state.selection.metric
+                            val (visible, remainder) = state.page.visible(metric, if (expanded) Int.MAX_VALUE else 8)
+                            val totalValue = state.page.total.value(metric)
+                            visible.forEachIndexed { index, row ->
+                                if (index > 0) {
+                                    HorizontalDivider(
+                                        thickness = AppTheme.sizes.thinDividerThickness,
+                                        color = MiuixTheme.colorScheme.outline.copy(alpha = AppTheme.opacity.outline),
+                                    )
+                                }
+                                ServiceRowItem(
+                                    row = row,
+                                    metric = metric,
+                                    total = totalValue,
+                                    onClick = { selectedServiceKey = row.key },
+                                )
+                            }
+                            if (remainder.value(metric) > 0) {
+                                HorizontalDivider(
+                                    thickness = AppTheme.sizes.thinDividerThickness,
+                                    color = MiuixTheme.colorScheme.outline.copy(alpha = AppTheme.opacity.outline),
+                                )
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { expanded = true }
+                                        .padding(spacing.space16),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        text = "其他 ${state.page.services.count { it.bytes.value(metric) > 0 } - visible.size} 个目标",
+                                        style = MiuixTheme.textStyles.body2,
+                                        color = MiuixTheme.colorScheme.primary,
+                                    )
+                                    Text(
+                                        text = ByteFormatter.format(remainder.value(metric)),
+                                        style = MiuixTheme.textStyles.body2,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MiuixTheme.colorScheme.primary,
+                                    )
                                 }
                             }
                         }
                     }
                 }
             }
+
+            item(key = "bottom_spacer") {
+                Spacer(modifier = Modifier.height(spacing.space24))
+            }
+        }
+    }
+
+    AppConfirmDialog(
+        show = showClearDialog,
+        title = "清空统计",
+        message = "确定要清空全部流量统计数据吗？此操作不可恢复。",
+        onDismissRequest = { showClearDialog = false },
+        onConfirm = {
+            showClearDialog = false
+            viewModel.clearStatistics()
+        },
+    )
+
+    selectedServiceKey?.let { key ->
+        val detail = remember(state.rows, key) {
+            projectServiceDetail(state.rows, key)
+        }
+        val evidence = remember(key, coordinator) {
+            coordinator.evidence.forService(key, System.currentTimeMillis())
+        }
+        AppActionBottomSheet(
+            show = detail != null,
+            title = detail?.label.orEmpty(),
+            onDismissRequest = { selectedServiceKey = null },
+        ) {
+            if (detail != null) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = spacing.space8),
+                    verticalArrangement = Arrangement.spacedBy(spacing.space16),
+                ) {
+                    AppCard(modifier = Modifier.fillMaxWidth()) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(spacing.space16),
+                            verticalArrangement = Arrangement.spacedBy(spacing.space8),
+                        ) {
+                            Text(
+                                text = if (state.selection.range == ServiceRange.TODAY) "今日流量" else "近 7 天流量",
+                                style = MiuixTheme.textStyles.headline1,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
+                                Text("下载", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                                Text(ByteFormatter.format(detail.bytes.down), fontWeight = FontWeight.Medium)
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
+                                Text("上传", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                                Text(ByteFormatter.format(detail.bytes.up), fontWeight = FontWeight.Medium)
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
+                                Text("合计", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                                Text(
+                                    ByteFormatter.format(detail.bytes.value(TrafficMetric.TOTAL)),
+                                    fontWeight = FontWeight.Bold,
+                                    color = MiuixTheme.colorScheme.primary,
+                                )
+                            }
+                            if (detail.lastTrafficAt > 0L) {
+                                val timeStr = remember(detail.lastTrafficAt) {
+                                    val instant = Instant.ofEpochMilli(detail.lastTrafficAt)
+                                    val zone = ZoneId.systemDefault()
+                                    DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(zone).format(instant)
+                                }
+                                HorizontalDivider(
+                                    thickness = AppTheme.sizes.thinDividerThickness,
+                                    color = MiuixTheme.colorScheme.outline.copy(alpha = AppTheme.opacity.outline),
+                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                ) {
+                                    Text("最近流量时间", color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                                    Text(timeStr, style = MiuixTheme.textStyles.footnote1)
+                                }
+                            }
+                        }
+                    }
+
+                    if (detail.sources.isNotEmpty()) {
+                        AppCard(modifier = Modifier.fillMaxWidth()) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(spacing.space16),
+                                verticalArrangement = Arrangement.spacedBy(spacing.space8),
+                            ) {
+                                Text(
+                                    text = "来源应用",
+                                    style = MiuixTheme.textStyles.headline1,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                                detail.sources.forEachIndexed { idx, share ->
+                                    if (idx > 0) {
+                                        HorizontalDivider(
+                                            thickness = AppTheme.sizes.thinDividerThickness,
+                                            color = MiuixTheme.colorScheme.outline.copy(alpha = AppTheme.opacity.outline),
+                                        )
+                                    }
+                                    Column(verticalArrangement = Arrangement.spacedBy(spacing.space4)) {
+                                        Text(share.app.label, fontWeight = FontWeight.Medium)
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                        ) {
+                                            Text(
+                                                text = "下载 ${ByteFormatter.format(share.bytes.down)} · 上传 ${ByteFormatter.format(share.bytes.up)}",
+                                                style = MiuixTheme.textStyles.footnote1,
+                                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                            )
+                                            Text(
+                                                text = ByteFormatter.format(share.bytes.value(TrafficMetric.TOTAL)),
+                                                style = MiuixTheme.textStyles.footnote1,
+                                                fontWeight = FontWeight.Medium,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (detail.key == "other") {
+                        Text(
+                            text = "包含缺少目标或连接明细的流量，以及无法恢复服务归属的旧记录。",
+                            style = MiuixTheme.textStyles.footnote1,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            modifier = Modifier.padding(horizontal = spacing.space8),
+                        )
+                    }
+
+                    AppCard(modifier = Modifier.fillMaxWidth()) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(spacing.space16),
+                            verticalArrangement = Arrangement.spacedBy(spacing.space8),
+                        ) {
+                            Text(
+                                text = "当前会话最近观测到的目标（最多保留 1 小时）",
+                                style = MiuixTheme.textStyles.headline1,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            if (evidence.isEmpty()) {
+                                Text(
+                                    text = "暂无目标记录",
+                                    style = MiuixTheme.textStyles.body2,
+                                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                )
+                            } else {
+                                evidence.take(20).forEach { entry ->
+                                    val target = listOfNotNull(entry.host, entry.ip).distinct().joinToString(" · ")
+                                    Text(
+                                        text = target,
+                                        style = MiuixTheme.textStyles.body2,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                                if (evidence.size > 20) {
+                                    Text(
+                                        text = "另有 ${evidence.size - 20} 个目标，请在连接页查看当前连接",
+                                        style = MiuixTheme.textStyles.footnote1,
+                                        color = MiuixTheme.colorScheme.primary,
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Button(
+                        text = "查看当前相关连接",
+                        onClick = {
+                            val keyToNavigate = detail.key
+                            selectedServiceKey = null
+                            navigator.push(Route.Connection(serviceKey = keyToNavigate))
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
         }
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun RecentRequestItemCard(
-    record: RecentRequestRecord,
-    nowMillis: Long,
-    onClick: () -> Unit,
-) {
-    val spacing = AppTheme.spacing
-    val connection = record.connection
-    val effectiveHost = remember(record.displayHost, connection) {
-        record.displayHost.ifBlank { connection.extractDisplayDestination() }
-    }
-    val timeText = formatMillisTime(record.startMillis, nowMillis)
-
-    Row(
-        modifier = Modifier
+private fun ServiceRowItem(row: ServiceRow, metric: TrafficMetric, total: Long, onClick: () -> Unit) {
+    val value = row.bytes.value(metric)
+    val fraction = if (total > 0) (value.toDouble() / total).coerceIn(0.0, 1.0) else 0.0
+    val percentage = if (value > 0 && fraction < .001) "<0.1%"
+    else String.format(Locale.getDefault(), "%.1f%%", fraction * 100)
+    Column(
+        Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = spacing.space16, vertical = spacing.space12),
-        horizontalArrangement = Arrangement.spacedBy(spacing.space12),
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(horizontal = 16.dp, vertical = 14.dp)
     ) {
-        AppIconBadge(
-            packageName = record.sourcePackageName,
-            appName = record.sourceAppName ?: effectiveHost,
-        )
-
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(spacing.space4),
-        ) {
-            // Host and time
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = effectiveHost,
-                    style = MiuixTheme.textStyles.body1,
-                    fontWeight = FontWeight.Medium,
-                    color = MiuixTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
-                )
-                Text(
-                    text = "建立于 $timeText",
-                    style = MiuixTheme.textStyles.footnote1,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                )
-            }
-
-            // SubDetail or App Name
-            if (record.subDetail != null || record.sourceAppName != null) {
-                val detail = record.subDetail ?: record.sourceAppName.orEmpty()
-                Text(
-                    text = detail,
-                    style = MiuixTheme.textStyles.footnote1.copy(fontSize = 11.sp),
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-
-            // Wrapping badges keep long node/rule names from squeezing the byte counts.
-            FlowRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(spacing.space6),
-                verticalArrangement = Arrangement.spacedBy(spacing.space4),
-            ) {
-                record.serviceTag?.let { SmallBadge(text = it, isPrimary = true) }
-                SmallBadge(text = record.exitNode, isPrimary = false)
-                SmallBadge(text = record.ruleLabel, isPrimary = false)
-            }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(
-                text = "↑ ${ByteFormatter.format(connection.upload)}  ↓ ${ByteFormatter.format(connection.download)}",
-                style = MiuixTheme.textStyles.footnote1.copy(fontSize = 11.sp),
+                row.label,
+                modifier = Modifier.weight(1f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                fontWeight = FontWeight.Medium,
+            )
+            Text(ByteFormatter.format(value))
+        }
+        val sub = row.subtitle()
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                sub,
+                Modifier.weight(1f),
+                style = MiuixTheme.textStyles.footnote1,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                percentage,
+                style = MiuixTheme.textStyles.footnote1,
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
             )
         }
-    }
-}
-
-@Composable
-private fun TargetSiteItemCard(
-    record: TargetSiteRecord,
-    nowMillis: Long,
-    rank: Int,
-    maxBytes: Long,
-) {
-    val spacing = AppTheme.spacing
-    val radii = AppTheme.radii
-    val progress = (record.totalBytes.toFloat() / maxBytes.toFloat()).coerceIn(0.02f, 1f)
-    val timeText = formatMillisTime(record.lastSeenAt, nowMillis)
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = spacing.space16, vertical = spacing.space12),
-        horizontalArrangement = Arrangement.spacedBy(spacing.space12),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (record.isIp) {
-            IpBadge()
-        } else {
-            RankBadge(rank = rank)
-        }
-
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(spacing.space4),
+        Spacer(Modifier.height(8.dp))
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(3.dp)
+                .background(MiuixTheme.colorScheme.surfaceVariant)
         ) {
-            // Site name and Primary Domain
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = record.displayName,
-                    style = MiuixTheme.textStyles.body1,
-                    fontWeight = FontWeight.Medium,
-                    color = MiuixTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
-                )
-                Text(
-                    text = ByteFormatter.format(record.totalBytes),
-                    style = MiuixTheme.textStyles.footnote1,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MiuixTheme.colorScheme.onSurface,
-                )
-            }
-
-            // Primary Domain and Tag
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(spacing.space6),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = record.primaryDomain,
-                    style = MiuixTheme.textStyles.footnote1.copy(fontSize = 11.sp),
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false),
-                )
-                record.serviceTag?.let { tag ->
-                    SmallBadge(text = tag, isPrimary = true)
-                }
-            }
-
-            // Progress bar
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(UiDp.dp4)
-                    .clip(RoundedCornerShape(radii.full))
-                    .background(MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f))
-            ) {
+            if (fraction > 0) {
                 Box(
-                    modifier = Modifier
-                        .fillMaxWidth(progress)
-                        .height(UiDp.dp4)
-                        .clip(RoundedCornerShape(radii.full))
+                    Modifier
+                        .fillMaxWidth(fraction.toFloat())
+                        .height(3.dp)
                         .background(MiuixTheme.colorScheme.primary)
                 )
             }
-
-            // Breakdown and Stats
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = "↑ ${ByteFormatter.format(record.totalUpload)}  ↓ ${ByteFormatter.format(record.totalDownload)}",
-                    style = MiuixTheme.textStyles.footnote1.copy(fontSize = 11.sp),
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                )
-                Text(
-                    text = "${record.connectionCount} 条连接 · 最近建立于 $timeText",
-                    style = MiuixTheme.textStyles.footnote1.copy(fontSize = 11.sp),
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun BadgeBox(
-    modifier: Modifier = Modifier,
-    backgroundColor: androidx.compose.ui.graphics.Color,
-    content: @Composable BoxScope.() -> Unit,
-) {
-    val radii = AppTheme.radii
-    Box(
-        modifier = modifier
-            .size(24.dp)
-            .clip(RoundedCornerShape(radii.radius8))
-            .background(backgroundColor),
-        contentAlignment = Alignment.Center,
-        content = content,
-    )
-}
-
-@Composable
-private fun IpBadge() {
-    BadgeBox(backgroundColor = MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f)) {
-        Text(
-            text = "IP",
-            style = MiuixTheme.textStyles.footnote1.copy(fontSize = 10.sp),
-            fontWeight = FontWeight.Bold,
-            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-        )
-    }
-}
-
-@Composable
-private fun RankBadge(rank: Int) {
-    val isTop3 = rank <= 3
-    val bgColor = if (isTop3) {
-        MiuixTheme.colorScheme.primary.copy(alpha = 0.15f)
-    } else {
-        MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
-    }
-    val textColor = if (isTop3) {
-        MiuixTheme.colorScheme.primary
-    } else {
-        MiuixTheme.colorScheme.onSurfaceVariantSummary
-    }
-
-    BadgeBox(backgroundColor = bgColor) {
-        Text(
-            text = "$rank",
-            style = MiuixTheme.textStyles.footnote1.copy(fontSize = 11.sp),
-            fontWeight = if (isTop3) FontWeight.Bold else FontWeight.Medium,
-            color = textColor,
-        )
-    }
-}
-
-@Composable
-private fun SmallBadge(text: String, isPrimary: Boolean) {
-    val radii = AppTheme.radii
-    val bgColor = if (isPrimary) {
-        MiuixTheme.colorScheme.primary.copy(alpha = 0.12f)
-    } else {
-        MiuixTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
-    }
-    val textColor = if (isPrimary) {
-        MiuixTheme.colorScheme.primary
-    } else {
-        MiuixTheme.colorScheme.onSurfaceVariantSummary
-    }
-
-    Text(
-        text = text,
-        style = MiuixTheme.textStyles.footnote1.copy(fontSize = 10.sp),
-        color = textColor,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-        modifier = Modifier
-            .clip(RoundedCornerShape(radii.radius8))
-            .background(bgColor)
-            .padding(horizontal = 6.dp, vertical = 2.dp),
-    )
-}
-
-@Composable
-private fun EmptyDetailNotice(message: String) {
-    val spacing = AppTheme.spacing
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = spacing.space24, horizontal = spacing.space16),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = message,
-            style = MiuixTheme.textStyles.body2,
-            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-        )
-    }
-}
-
-@Composable
-private fun AppIconBadge(packageName: String?, appName: String) {
-    val componentSizes = AppTheme.sizes
-    val opacity = AppTheme.opacity
-    val radii = AppTheme.radii
-
-    val iconPx = with(LocalDensity.current) { componentSizes.iconBadgeMedium.roundToPx() }
-    val bitmap = rememberAppIconBitmap(packageName, iconPx)
-    if (bitmap != null) {
-        Image(
-            bitmap = bitmap,
-            contentDescription = appName,
-            modifier = Modifier
-                .size(componentSizes.iconBadgeMedium)
-                .clip(RoundedCornerShape(radii.radius12)),
-        )
-        return
-    }
-
-    Box(
-        modifier = Modifier
-            .size(componentSizes.iconBadgeMedium)
-            .clip(RoundedCornerShape(radii.radius12))
-            .background(MiuixTheme.colorScheme.primary.copy(alpha = opacity.subtleStrong)),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = appName.take(1).ifBlank { "?" },
-            style = MiuixTheme.textStyles.body1,
-            color = MiuixTheme.colorScheme.primary,
-            fontWeight = FontWeight.Bold,
-        )
-    }
-}
-
-private val DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("MM-dd HH:mm")
-
-private fun formatMillisTime(millis: Long, nowMillis: Long): String {
-    if (millis <= 0L) return "未知时间"
-    if (millis > nowMillis) return Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).format(DATE_TIME_FORMATTER)
-    val diffSeconds = (nowMillis - millis) / 1000
-    return when {
-        diffSeconds < 60 -> "刚刚"
-        diffSeconds < 3600 -> "${diffSeconds / 60} 分钟前"
-        diffSeconds < 86400 -> "${diffSeconds / 3600} 小时前"
-        else -> {
-            val instant = Instant.ofEpochMilli(millis)
-            val zonedDateTime = instant.atZone(ZoneId.systemDefault())
-            zonedDateTime.format(DATE_TIME_FORMATTER)
         }
     }
 }

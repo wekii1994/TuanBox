@@ -241,11 +241,14 @@ class ProxyFacade(
         }
     }
 
+    var onBeforeStop: (suspend () -> Unit)? = null
+
     suspend fun startProxy(mode: RunMode = networkSettingsStorage.runMode.value) =
         startProxy(RuntimeStartRequest(mode = mode))
 
     suspend fun stopProxy(request: RuntimeStopRequest) {
         try {
+            runCatching { onBeforeStop?.invoke() }
             session.stop(request)
         } finally {
             resumePreviewWhenEligible()

@@ -28,12 +28,18 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import com.github.yumeyucca.yumebox.core.domain.ConnectionHistoryManager
 import com.github.yumeyucca.yumebox.core.model.ConnectionInfo
+import com.github.yumeyucca.yumebox.data.trafficv2.TrafficRuntimeCoordinator
 import com.github.yumeyucca.yumebox.feature.meta.presentation.component.ConnectionDetailContent
 import com.github.yumeyucca.yumebox.feature.meta.presentation.viewmodel.ConnectionDetailViewModel
 import com.github.yumeyucca.yumebox.presentation.component.*
+import kotlinx.coroutines.awaitCancellation
 import org.koin.androidx.compose.koinViewModel
+import org.koin.compose.koinInject
 import com.github.yumeyucca.yumebox.core.locale.YumeTxt
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 
@@ -48,6 +54,19 @@ fun ConnectionDetailScreen(
     canInterrupt: Boolean,
 ) {
     val viewModel = koinViewModel<ConnectionDetailViewModel>()
+    val coordinator = koinInject<TrafficRuntimeCoordinator>()
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    LaunchedEffect(lifecycleOwner, coordinator) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            val lease = coordinator.demand.acquire()
+            try {
+                awaitCancellation()
+            } finally {
+                lease.close()
+            }
+        }
+    }
     val state by viewModel.state.collectAsState()
     val scrollBehavior = MiuixScrollBehavior()
     val staged = remember(connectionId) {

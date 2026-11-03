@@ -71,7 +71,7 @@ internal fun RouteContent(route: Route, navigator: Navigator) {
         Route.AccessControl -> AccessControlScreen(navigator)
         Route.AccessControlAppList -> AccessControlAppListScreen()
         Route.MetaFeature -> MetaFeatureScreen(navigator)
-        Route.Connection -> ConnectionScreen(navigator)
+        is Route.Connection -> ConnectionScreen(navigator, route.serviceKey)
         is Route.ConnectionDetail ->
             ConnectionDetailScreen(
                 navigator = navigator,

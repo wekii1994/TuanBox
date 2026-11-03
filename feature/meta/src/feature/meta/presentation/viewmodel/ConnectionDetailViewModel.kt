@@ -25,9 +25,9 @@ package com.github.yumeyucca.yumebox.feature.meta.presentation.viewmodel
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.github.yumeyucca.yumebox.core.domain.ConnectionHistoryManager
 import com.github.yumeyucca.yumebox.core.model.ConnectionInfo
-import com.github.yumeyucca.yumebox.core.util.PollingTimerSpecs
-import com.github.yumeyucca.yumebox.core.util.PollingTimers
+import com.github.yumeyucca.yumebox.data.trafficv2.TrafficRuntimeCoordinator
 import com.github.yumeyucca.yumebox.runtime.client.access.RuntimeAccess
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -38,33 +38,31 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.takeWhile
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 
 /**
- * One connection's detail page: polls that connection while it is live and issues the interrupt.
- *
- * The list screen hands the tapped row over through a staged snapshot, so the first frame already
- * shows real numbers; everything after that comes from polling here.
+ * One connection's detail page: watches that connection from the shared coordinator live state.
  */
-class ConnectionDetailViewModel(private val appContext: Context) : ViewModel() {
+class ConnectionDetailViewModel(
+    private val appContext: Context,
+    private val coordinator: TrafficRuntimeCoordinator,
+) : ViewModel() {
     data class ConnectionDetailState(
         val info: ConnectionInfo? = null,
         /** False once the connection has closed: the page freezes its last snapshot. */
         val canInterrupt: Boolean = false,
         val isInterrupting: Boolean = false,
-        /** False until the first poll answers, so the page can tell "gone" from "not yet asked". */
+        /** False until the first snapshot answers. */
         val hasLoaded: Boolean = false,
     )
 
     private val _state = MutableStateFlow(ConnectionDetailState())
     val state: StateFlow<ConnectionDetailState> = _state.asStateFlow()
 
-    /** Emitted once per successful interrupt; replay is intentionally off, so a page re-opened
-     *  later does not immediately leave itself. */
+    /** Emitted once per successful interrupt. */
     private val _closed = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val closed: SharedFlow<Unit> = _closed.asSharedFlow()
 
@@ -72,35 +70,45 @@ class ConnectionDetailViewModel(private val appContext: Context) : ViewModel() {
     private var watchedId: String? = null
 
     /**
-     * Starts watching [connectionId]. The view model is scoped to the activity, so a second detail
-     * page must take over from the first rather than sharing its snapshot.
+     * Starts watching [connectionId].
      */
     fun start(connectionId: String, canInterrupt: Boolean, staged: ConnectionInfo?) {
         if (watchedId == connectionId && pollingJob?.isActive == true) return
         pollingJob?.cancel()
         watchedId = connectionId
         val initial = staged?.takeIf { it.id == connectionId }
-        // The route carries whether the core still had this connection; a missing staged snapshot
-        // (process death, or a link opened the page directly) must not disable the button.
         _state.value =
             ConnectionDetailState(
                 info = initial,
                 canInterrupt = canInterrupt,
-                hasLoaded = initial != null && !canInterrupt,
+                hasLoaded = initial != null,
             )
-        if (initial != null && !canInterrupt) return
         pollingJob =
             viewModelScope.launch {
-                val gone = pollOnce(connectionId)
-                _state.update { it.copy(hasLoaded = true) }
-                if (gone) return@launch
-                PollingTimers.ticks(PollingTimerSpecs.ConnectionsPolling)
-                    .takeWhile { !pollOnce(connectionId) }
-                    .collect { }
+                coordinator.live.collect { live ->
+                    val raw = live.raw
+                    if (raw != null) {
+                        val active = raw.connections.firstOrNull { it.id == connectionId }
+                        if (active != null) {
+                            _state.update { it.copy(info = active, canInterrupt = true, hasLoaded = true) }
+                        } else {
+                            val closed = ConnectionHistoryManager.findClosedConnection(connectionId)
+                            _state.update {
+                                it.copy(
+                                    info = closed ?: it.info,
+                                    canInterrupt = false,
+                                    hasLoaded = true,
+                                )
+                            }
+                        }
+                    } else if (live.error != null) {
+                        _state.update { it.copy(hasLoaded = true) }
+                    }
+                }
             }
     }
 
-    /** Stops watching; called when the page leaves, so a background poll does not outlive it. */
+    /** Stops watching; called when the page leaves. */
     fun stop() {
         pollingJob?.cancel()
         pollingJob = null
@@ -116,59 +124,21 @@ class ConnectionDetailViewModel(private val appContext: Context) : ViewModel() {
             try {
                 if (closeConnection(connection.id)) _closed.tryEmit(Unit)
             } finally {
-                // Runs on cancellation too: a page that comes back must not show a stuck spinner.
                 _state.update { it.copy(isInterrupting = false) }
             }
         }
     }
 
-    /**
-     * One poll tick.
-     *
-     * @return true when the connection is gone and polling should stop.
-     */
-    @Suppress("TooGenericExceptionCaught")
-    private suspend fun pollOnce(connectionId: String): Boolean =
-        withContext(Dispatchers.IO) {
-            val connections =
-                try {
-                    RuntimeAccess.connect(appContext)
-                    RuntimeAccess.core().queryConnections().connections
-                } catch (
-                    error: Exception
-                ) { // fault barrier: a failed query is not a closed connection, keep polling
-                    if (error is CancellationException) throw error
-                    Timber.w(error, "Failed to query connections")
-                    null
-                }
-            val match = connections?.firstOrNull { it.id == connectionId }
-            when {
-                match != null -> {
-                    _state.update { it.copy(info = match) }
-                    false
-                }
-                // A snapshot without this id means the core dropped it; a failed query means we
-                // know nothing, so the loop must survive.
-                connections != null -> {
-                    _state.update { it.copy(canInterrupt = false) }
-                    true
-                }
-                else -> false
-            }
-        }
-
-    @Suppress("TooGenericExceptionCaught")
     private suspend fun closeConnection(id: String): Boolean =
         withContext(Dispatchers.IO) {
-            try {
+            runCatching {
                 RuntimeAccess.connect(appContext)
                 RuntimeAccess.core().closeConnection(id)
-            } catch (
-                error: Exception
-            ) { // fault barrier: the button reports failure through the state it already shows
-                if (error is CancellationException) throw error
-                Timber.w(error, "Failed to close connection: %s", id)
-                false
             }
+                .onFailure { error ->
+                    if (error is CancellationException) throw error
+                    Timber.w(error, "Failed to close connection: %s", id)
+                }
+                .getOrDefault(false)
         }
 }

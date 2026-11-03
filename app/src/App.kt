@@ -29,7 +29,7 @@ import com.github.yumeyucca.yumebox.core.Global
 import com.github.yumeyucca.yumebox.core.util.AppVisibilityTracker
 import com.github.yumeyucca.yumebox.core.util.StartupTaskCoordinator
 import com.github.yumeyucca.yumebox.core.util.runtimeHomeDir
-import com.github.yumeyucca.yumebox.data.controller.AppTrafficStatisticsCollector
+import com.github.yumeyucca.yumebox.data.trafficv2.TrafficRuntimeCoordinator
 import com.github.yumeyucca.yumebox.data.store.AppSettingsStore
 import com.github.yumeyucca.yumebox.data.store.FeatureStore
 import com.github.yumeyucca.yumebox.di.appModule
@@ -278,9 +278,9 @@ class App : Application() {
             startupStep("Failed to ensure Moe wallpaper local copy") {
                 ensureMoeWallpaperLocalCopy(appSettings)
             }
-            // Constructing the collector is what starts it (its init launches the poll loops).
-            startupStep("Failed to start app traffic statistics collection") {
-                koin.get<AppTrafficStatisticsCollector>()
+            // Eagerly resolve the coordinator to start the collection loop.
+            startupStep("Failed to start traffic runtime coordinator") {
+                koin.get<TrafficRuntimeCoordinator>()
             }
             startupStep("Proxy group warm-up failed") {
                 koin.get<ProxyFacade>().awaitProxyGroupWarmUp()

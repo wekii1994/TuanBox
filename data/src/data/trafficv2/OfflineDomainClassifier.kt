@@ -18,7 +18,7 @@
  *
  */
 
-package com.github.yumeyucca.yumebox.feature.meta.presentation.viewmodel
+package com.github.yumeyucca.yumebox.data.trafficv2
 
 import com.google.common.net.InetAddresses
 import com.google.common.net.InternetDomainName
@@ -42,7 +42,7 @@ data class NormalizedDomain(
     val isCdnSharded: Boolean,
 )
 
-object DomainClassifier {
+object OfflineDomainClassifier {
     private val BRAND_MAP: Map<String, BrandEntity> by lazy {
         val map = HashMap<String, BrandEntity>(128)
         fun registerBrand(

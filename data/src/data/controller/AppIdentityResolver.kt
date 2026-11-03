@@ -29,7 +29,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
-import java.util.concurrent.ConcurrentHashMap
+
 
 data class AppIdentity(
     val appKey: String,
@@ -40,10 +40,22 @@ data class AppIdentity(
 class AppIdentityResolver(context: Context) {
     private val appContext = context.applicationContext
     private val packageManager = appContext.packageManager
-    private val packageCache = ConcurrentHashMap<String, AppIdentity>()
-    private val labelCache = ConcurrentHashMap<String, String>()
+    private val packageCache = boundedCache<String, AppIdentity>(1024)
+    private val labelCache = boundedCache<String, String>(512)
     private data class UidLookup(val packageName: String?)
-    private val uidCache = ConcurrentHashMap<Int, UidLookup>()
+    private val uidCache = boundedCache<Int, UidLookup>(1024)
+    private var refreshedAtNanos = System.nanoTime()
+
+    private fun <K, V> boundedCache(limit: Int) = object : LinkedHashMap<K, V>(64, .75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<K, V>?) = size > limit
+    }
+
+    @Synchronized
+    fun invalidate() {
+        packageCache.clear(); labelCache.clear(); uidCache.clear()
+        installedAppsCache = null
+        refreshedAtNanos = System.nanoTime()
+    }
 
     @Volatile
     private var installedAppsCache: List<InstalledAppIdentity>? = null
@@ -60,7 +72,9 @@ class AppIdentityResolver(context: Context) {
         )
     }
 
+    @Synchronized
     fun resolve(explicitPackageName: String, processName: String, uid: Int?): AppIdentity {
+        if (System.nanoTime() - refreshedAtNanos >= 600_000_000_000L) invalidate()
         val cacheKey = buildString {
             append(explicitPackageName)
             append('|')

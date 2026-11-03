@@ -21,52 +21,21 @@
 package com.github.yumeyucca.yumebox.runtime.service.session
 
 import android.content.Context
-import com.github.yumeyucca.yumebox.core.domain.ConnectionHistoryManager
-import com.github.yumeyucca.yumebox.core.util.AppVisibilityTracker
-import com.github.yumeyucca.yumebox.core.util.PollingTimerSpecs
-import com.github.yumeyucca.yumebox.core.util.PollingTimers
-import com.github.yumeyucca.yumebox.runtime.service.core.CoreProcess
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.launch
-import timber.log.Timber
 
 /**
- * Feeds [ConnectionHistoryManager] from `/connections`, but only while an activity is visible:
- * nothing reads the history in the background, so polling there only wakes the core.
+ * Historical connection tracker. The sole sampler in TrafficRuntimeCoordinator now feeds
+ * ConnectionHistoryManager on every validated sample, so independent polling here is retired.
  */
 internal class ConnectionTracker(
-    private val context: Context,
-    private val scope: CoroutineScope,
+    @Suppress("UnusedPrivateProperty") private val context: Context,
+    @Suppress("UnusedPrivateProperty") private val scope: CoroutineScope,
 ) {
-    private var job: Job? = null
-
     fun start() {
-        stop()
-        job =
-            scope.launch(Dispatchers.IO) {
-                AppVisibilityTracker.isForeground.collectLatest { foreground ->
-                    if (!foreground) return@collectLatest
-                    PollingTimers.ticks(PollingTimerSpecs.SessionConnectionTracking).collect {
-                        // A failed poll must not end the tick loop; cancellation must still
-                        // tear the loop down.
-                        runCatching {
-                            val snapshot = CoreProcess.controller(context).queryConnections()
-                            ConnectionHistoryManager.updateConnections(snapshot.connections)
-                        }.onFailure { error ->
-                            if (error is CancellationException) throw error
-                            Timber.d(error, "connection poll failed")
-                        }
-                    }
-                }
-            }
+        // SharedTrafficSampler feeds ConnectionHistoryManager directly.
     }
 
     fun stop() {
-        job?.cancel()
-        job = null
+        // No-op
     }
 }

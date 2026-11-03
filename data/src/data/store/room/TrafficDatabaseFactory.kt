@@ -21,6 +21,8 @@
 package com.github.yumeyucca.yumebox.data.store.room
 
 import android.content.Context
+import com.github.yumeyucca.yumebox.data.trafficv2.ServiceTrafficDao
+import com.github.yumeyucca.yumebox.data.trafficv2.SERVICE_MIGRATION_2_3
 import androidx.room.Room
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
@@ -33,15 +35,22 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * Room supertypes in its signatures. This lets `:data` keep Room as an `implementation` dependency
  * without leaking it onto the `:app` compile classpath.
  */
-fun createTrafficStatisticsDao(context: Context): TrafficStatisticsDao =
+data class TrafficStores(val legacy: TrafficStatisticsDao, val services: ServiceTrafficDao)
+
+fun createTrafficStores(context: Context): TrafficStores {
+    val database =
     Room.databaseBuilder(
         context.applicationContext,
         TrafficDatabase::class.java,
         TrafficDatabase.DATABASE_NAME,
     )
-        .addMigrations(TRAFFIC_MIGRATION_1_2)
+        .addMigrations(TRAFFIC_MIGRATION_1_2, SERVICE_MIGRATION_2_3)
         .build()
-        .trafficStatisticsDao()
+    return TrafficStores(database.trafficStatisticsDao(), database.serviceTrafficDao())
+}
+
+fun createTrafficStatisticsDao(context: Context): TrafficStatisticsDao =
+    createTrafficStores(context).legacy
 
 private val TRAFFIC_MIGRATION_1_2 =
     object : Migration(1, 2) {

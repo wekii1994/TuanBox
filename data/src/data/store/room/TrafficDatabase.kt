@@ -20,6 +20,7 @@
 
 package com.github.yumeyucca.yumebox.data.store.room
 
+import com.github.yumeyucca.yumebox.data.trafficv2.*
 import androidx.room.Database
 import androidx.room.RoomDatabase
 
@@ -29,11 +30,15 @@ import androidx.room.RoomDatabase
             AppTrafficDailyEntity::class,
             RouteTrafficDailyEntity::class,
             TrafficHourlyEntity::class,
+            ServiceBucket::class,
+            BatchCursor::class,
+            GapEntity::class,
         ],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 abstract class TrafficDatabase : RoomDatabase() {
+    abstract fun serviceTrafficDao(): ServiceTrafficDao
     abstract fun trafficStatisticsDao(): TrafficStatisticsDao
 
     companion object {

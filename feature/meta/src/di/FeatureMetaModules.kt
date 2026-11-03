@@ -22,23 +22,29 @@
 
 package com.github.yumeyucca.yumebox.di
 
-
-import com.github.yumeyucca.yumebox.data.store.TrafficStatisticsStore
+import com.github.yumeyucca.yumebox.data.store.room.TrafficStores
+import com.github.yumeyucca.yumebox.data.trafficv2.TrafficRuntimeCoordinator
 import com.github.yumeyucca.yumebox.feature.meta.presentation.util.CustomRoutingBootstrapper
 import com.github.yumeyucca.yumebox.feature.meta.presentation.viewmodel.ConnectionDetailViewModel
 import com.github.yumeyucca.yumebox.feature.meta.presentation.viewmodel.ConnectionViewModel
 import com.github.yumeyucca.yumebox.feature.meta.presentation.viewmodel.CustomRoutingViewModel
-import com.github.yumeyucca.yumebox.feature.meta.presentation.viewmodel.TrafficStatisticsViewModel
+import com.github.yumeyucca.yumebox.feature.meta.presentation.viewmodel.TrafficStatisticsV2ViewModel
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.module
 
 val featureMetaViewModelModule = module {
     single { CustomRoutingBootstrapper(get()) }
-    viewModel { ConnectionViewModel(androidContext()) }
-    viewModel { ConnectionDetailViewModel(androidContext()) }
-    // androidContext() is provided for AppIdentityResolver to resolve app names and icons
-    viewModel { TrafficStatisticsViewModel(get<TrafficStatisticsStore>(), androidContext(), get()) }
+    viewModel { ConnectionViewModel(androidContext(), get(), get(), get()) }
+    viewModel { ConnectionDetailViewModel(androidContext(), get()) }
+    viewModel {
+        val coordinator = get<TrafficRuntimeCoordinator>()
+        TrafficStatisticsV2ViewModel(
+            dao = get<TrafficStores>().services,
+            clearAll = { coordinator.clearStatistics() },
+            preferences = get(),
+        )
+    }
     viewModel { CustomRoutingViewModel(get(), get(), get()) }
 }
 

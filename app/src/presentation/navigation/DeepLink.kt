@@ -65,7 +65,7 @@ private fun screenRouteOf(name: String?): Route? =
         "about" -> Route.About
         "access" -> Route.AccessControl
         "traffic" -> Route.TrafficStatistics
-        "connection" -> Route.Connection
+        "connection" -> Route.Connection()
         "log" -> Route.Log
         "override" -> Route.Override
         "providers" -> Route.RulesAndProviders(RulesProvidersTab.Providers)

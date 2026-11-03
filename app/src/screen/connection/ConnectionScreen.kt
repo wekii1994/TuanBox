@@ -22,18 +22,26 @@
 
 package com.github.yumeyucca.yumebox.screen.connection
 
-
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.ui.unit.Dp
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
+import com.github.yumeyucca.yumebox.core.locale.YumeTxt
 import com.github.yumeyucca.yumebox.core.model.ConnectionInfo
+import com.github.yumeyucca.yumebox.data.trafficv2.TrafficRuntimeCoordinator
 import com.github.yumeyucca.yumebox.feature.meta.presentation.component.ConnectionCard
 import com.github.yumeyucca.yumebox.feature.meta.presentation.viewmodel.ConnectionTab
 import com.github.yumeyucca.yumebox.feature.meta.presentation.viewmodel.ConnectionViewModel
@@ -41,13 +49,13 @@ import com.github.yumeyucca.yumebox.presentation.component.*
 import com.github.yumeyucca.yumebox.presentation.navigation.Route
 import com.github.yumeyucca.yumebox.presentation.theme.AppTheme
 import com.github.yumeyucca.yumebox.presentation.theme.UiDp
+import kotlinx.coroutines.awaitCancellation
 import org.koin.androidx.compose.koinViewModel
-import com.github.yumeyucca.yumebox.core.locale.YumeTxt
+import org.koin.compose.koinInject
 import top.yukonga.miuix.kmp.basic.*
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Close
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import com.github.yumeyucca.yumebox.presentation.component.rememberCollapsedTopPadding
-import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
-import top.yukonga.miuix.kmp.basic.ScrollBehavior
 
 /** Tab label, listed in [ConnectionTab] order; the segmented row indexes tabs by ordinal. */
 private val ConnectionTab.label: String
@@ -59,15 +67,33 @@ private val ConnectionTab.label: String
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun ConnectionScreen(navigator: Navigator) {
+fun ConnectionScreen(navigator: Navigator, initialServiceKey: String? = null) {
     val viewModel = koinViewModel<ConnectionViewModel>()
+    val coordinator = koinInject<TrafficRuntimeCoordinator>()
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    LaunchedEffect(lifecycleOwner, coordinator) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            val lease = coordinator.demand.acquire()
+            try {
+                awaitCancellation()
+            } finally {
+                lease.close()
+            }
+        }
+    }
+
+    LaunchedEffect(initialServiceKey) {
+        if (initialServiceKey != null) {
+            viewModel.setServiceKey(initialServiceKey)
+        }
+    }
+
     val screen by viewModel.screenState.collectAsState()
     val search = rememberSearchPagerState()
     val scrollBehavior = MiuixScrollBehavior()
     val mainListState = rememberLazyListState()
     val mainLikePadding = rememberStandalonePageMainPadding()
-
-    LaunchedEffect(Unit) { viewModel.startPolling() }
 
     fun openConnectionDetail(connection: ConnectionInfo) {
         // Collapse search first so the expand gesture never races the detail push.
@@ -81,18 +107,6 @@ fun ConnectionScreen(navigator: Navigator) {
         )
     }
 
-    /*
-     * Layering (AccessControl search pattern — no sheet sibling anymore):
-     *
-     *   Box (full window)
-     *   ├─ Scaffold
-     *   │    topBar: collapsed search chrome
-     *   │    content: connection list
-     *   └─ SearchPager                    ← full-window sibling (window-top offsetY animation)
-     *
-     * SearchPager is always composed; when settled collapsed it is size-0 and not a hit target.
-     * Detail is a real navigation page so it never competes with search expand.
-     */
     Box(modifier = Modifier.fillMaxSize()) {
         ConnectionListScaffold(
             screen = screen,
@@ -101,6 +115,7 @@ fun ConnectionScreen(navigator: Navigator) {
             listState = mainListState,
             onTabSelected = { viewModel.setTab(it) },
             onOpenConnection = { openConnectionDetail(it) },
+            onClearServiceFilter = { viewModel.setServiceKey(null) },
         )
 
         ConnectionSearchOverlay(
@@ -124,6 +139,7 @@ private fun ConnectionListScaffold(
     listState: LazyListState,
     onTabSelected: (ConnectionTab) -> Unit,
     onOpenConnection: (ConnectionInfo) -> Unit,
+    onClearServiceFilter: () -> Unit,
 ) {
     val spacing = AppTheme.spacing
     val listStartPadding = spacing.screenHorizontal
@@ -132,6 +148,7 @@ private fun ConnectionListScaffold(
     val emptyText =
         when {
             screen.state.isLoading -> YumeTxt.Connection.Loading
+            screen.state.serviceKey != null && screen.filteredConnections.isEmpty() -> "当前无相关活动连接"
             screen.state.searchQuery.isNotEmpty() -> YumeTxt.Connection.NoResults
             else -> YumeTxt.Connection.Empty
         }
@@ -177,6 +194,35 @@ private fun ConnectionListScaffold(
                     onTabSelected = { index -> onTabSelected(ConnectionTab.entries[index]) },
                     tabRowPadding = UiDp.dp0,
                 )
+
+                if (screen.state.serviceKey != null) {
+                    item(key = "service_filter_banner") {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = spacing.space8)
+                                .clip(RoundedCornerShape(UiDp.dp8))
+                                .background(MiuixTheme.colorScheme.primary.copy(alpha = 0.12f))
+                                .padding(horizontal = spacing.space12, vertical = spacing.space8),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = "正在筛选目标服务: ${screen.state.serviceKey}",
+                                style = MiuixTheme.textStyles.footnote1,
+                                color = MiuixTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Medium,
+                            )
+                            IconButton(onClick = onClearServiceFilter, modifier = Modifier.size(UiDp.dp24)) {
+                                Icon(
+                                    imageVector = MiuixIcons.Close,
+                                    contentDescription = "清除筛选",
+                                    tint = MiuixTheme.colorScheme.primary,
+                                )
+                            }
+                        }
+                    }
+                }
 
                 if (screen.filteredConnections.isEmpty()) {
                     item {

@@ -22,21 +22,20 @@
 
 package com.github.yumeyucca.yumebox.feature.meta.presentation.viewmodel
 
-
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.github.yumeyucca.yumebox.core.domain.ConnectionHistoryManager
 import com.github.yumeyucca.yumebox.core.model.ConnectionInfo
 import com.github.yumeyucca.yumebox.core.model.ConnectionSnapshot
-import com.github.yumeyucca.yumebox.core.util.PollingTimerSpecs
-import com.github.yumeyucca.yumebox.core.util.PollingTimers
+import com.github.yumeyucca.yumebox.data.store.RemoteControllerStore
+import com.github.yumeyucca.yumebox.data.trafficv2.ConnectionSampleMapper
+import com.github.yumeyucca.yumebox.data.trafficv2.TrafficRuntimeCoordinator
 import com.github.yumeyucca.yumebox.feature.meta.presentation.util.displayTarget
 import com.github.yumeyucca.yumebox.feature.meta.presentation.util.stringOrEmpty
 import com.github.yumeyucca.yumebox.runtime.client.access.RuntimeAccess
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -61,9 +60,15 @@ data class ConnectionState(
     val sortBy: ConnectionSort = ConnectionSort.Time,
     val selectedTab: ConnectionTab = ConnectionTab.ACTIVE,
     val error: String? = null,
+    val serviceKey: String? = null,
 )
 
-class ConnectionViewModel(private val appContext: Context) : ViewModel() {
+class ConnectionViewModel(
+    private val appContext: Context,
+    private val coordinator: TrafficRuntimeCoordinator,
+    private val mapper: ConnectionSampleMapper,
+    private val remoteControllerStore: RemoteControllerStore,
+) : ViewModel() {
     private val _state = MutableStateFlow(ConnectionState())
     val state: StateFlow<ConnectionState> = _state.asStateFlow()
 
@@ -83,34 +88,36 @@ class ConnectionViewModel(private val appContext: Context) : ViewModel() {
                 initialValue = ConnectionScreenState(),
             )
 
-    private var pollingJob: Job? = null
-
-    fun startPolling() {
-        if (pollingJob?.isActive == true) return
-
-        pollingJob = viewModelScope.launch {
-            pollOnce()
-            PollingTimers.ticks(PollingTimerSpecs.ConnectionsPolling).collect { pollOnce() }
+    init {
+        // Collect live snapshot from shared coordinator - no separate polling loop
+        viewModelScope.launch {
+            coordinator.live.collect { live ->
+                _state.update { current ->
+                    current.copy(
+                        snapshot = live.raw,
+                        error = live.error,
+                        isLoading = live.raw == null && live.error == null,
+                    )
+                }
+            }
+        }
+        // When active backend changes, clear serviceKey filter
+        viewModelScope.launch {
+            remoteControllerStore.activeBackendId.collect {
+                _state.update { it.copy(serviceKey = null) }
+            }
         }
     }
 
-    /** One poll tick; a failure is reported through the state instead of killing the loop. */
-    @Suppress("TooGenericExceptionCaught")
-    private suspend fun pollOnce() {
-        try {
-            refreshConnections()
-        } catch (
-            error: Exception
-        ) { // fault barrier: keep the polling loop alive on any failure
-            if (error is CancellationException) throw error
-            Timber.w(error, "Failed to poll connections")
-            _state.update { it.copy(error = error.message) }
-        }
+    /** Kept for backwards compatibility; the coordinator drives polling via demand lease. */
+    fun startPolling() {
     }
 
     fun stopPolling() {
-        pollingJob?.cancel()
-        pollingJob = null
+    }
+
+    fun setServiceKey(key: String?) {
+        _state.update { it.copy(serviceKey = key) }
     }
 
     fun setSearchQuery(query: String) {
@@ -142,39 +149,29 @@ class ConnectionViewModel(private val appContext: Context) : ViewModel() {
                 }
                 .getOrDefault(false)
         }
-            .also { refreshConnections() }
-
-    @Suppress("TooGenericExceptionCaught")
-    private suspend fun refreshConnections() {
-        withContext(Dispatchers.IO) {
-            try {
-                RuntimeAccess.connect(appContext)
-                val snapshot = RuntimeAccess.core().queryConnections()
-                ConnectionHistoryManager.updateConnections(snapshot.connections)
-                _state.update {
-                    it.copy(
-                        snapshot = snapshot,
-                        error = null,
-                        isLoading = false,
-                    )
-                }
-            } catch (
-                error: Exception
-            ) { // fault barrier: service IPC failure becomes UI error state
-                if (error is CancellationException) throw error
-                Timber.w(error, "Failed to query connections")
-                _state.update {
-                    it.copy(error = error.message, isLoading = false)
-                }
-            }
-        }
-    }
 
     private fun buildFilteredConnections(currentState: ConnectionState): List<ConnectionInfo> {
+        val isLocal = !remoteControllerStore.controllerEnabled.value || !remoteControllerStore.controllerAttached.value
         val connections =
             when (currentState.selectedTab) {
-                ConnectionTab.ACTIVE -> currentState.snapshot?.connections ?: emptyList()
-                ConnectionTab.CLOSED -> ConnectionHistoryManager.getClosedConnections()
+                ConnectionTab.ACTIVE -> {
+                    val raw = currentState.snapshot?.connections ?: emptyList()
+                    if (currentState.serviceKey != null) {
+                        raw.filter { conn ->
+                            mapper.resolveServiceKey(conn, isLocal) == currentState.serviceKey
+                        }
+                    } else {
+                        raw
+                    }
+                }
+                ConnectionTab.CLOSED -> {
+                    if (currentState.serviceKey != null) {
+                        // 筛选为空显示无当前连接，不拿历史关闭记录填充
+                        emptyList()
+                    } else {
+                        ConnectionHistoryManager.getClosedConnections()
+                    }
+                }
             }
 
         val filtered =
@@ -207,9 +204,5 @@ class ConnectionViewModel(private val appContext: Context) : ViewModel() {
                 filtered
             }
         return sorted
-    }
-
-    override fun onCleared() {
-        stopPolling()
     }
 }

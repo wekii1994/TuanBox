@@ -58,7 +58,7 @@ sealed interface Route {
 
     data object MetaFeature : Route
 
-    data object Connection : Route
+    data class Connection(val serviceKey: String? = null) : Route
 
     data class ConnectionDetail(
         val connectionId: String,

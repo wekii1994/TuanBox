@@ -140,7 +140,7 @@ private fun MetaNavigationSection(navigator: Navigator) {
         )
         PreferenceArrowItem(
             title = YumeTxt.Connection.Title,
-            onClick = { navigator.push(Route.Connection) },
+            onClick = { navigator.push(Route.Connection()) },
         )
     }
     SectionSummary(YumeTxt.MetaFeature.Section.LogsAndConnectionsSummary)
