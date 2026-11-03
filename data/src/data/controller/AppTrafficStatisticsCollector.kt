@@ -30,6 +30,8 @@ import com.github.yumeyucca.yumebox.data.store.TrafficStatisticsStore
 import com.github.yumeyucca.yumebox.domain.model.TrafficData
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import timber.log.Timber
 
 class AppTrafficStatisticsCollector(
@@ -38,6 +40,15 @@ class AppTrafficStatisticsCollector(
     private val appIdentityResolver: AppIdentityResolver,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
 ) {
+    private val collectionMutex = Mutex()
+
+    suspend fun clearStatistics() = withContext(Dispatchers.IO) {
+        collectionMutex.withLock {
+            trafficStatisticsStore.clearAll()
+            resetBaselines()
+        }
+    }
+
     private var collectionJob: Job? = null
     private var monitoringJob: Job? = null
     private val connectionBaselines = linkedMapOf<String, ConnectionTrafficBaseline>()
@@ -63,18 +74,20 @@ class AppTrafficStatisticsCollector(
                     if (previousMonitoring != null) {
                         collectTrafficDataSafely()
                     }
-                    resetBaselines()
+                    collectionMutex.withLock { resetBaselines() }
                 }
             }
         }
     }
 
     private fun startTrafficMonitoring(): Job = scope.launch {
-        lastTotalUpload = trafficStatisticsStore.getLastTrafficUpload()
-        lastTotalDownload = trafficStatisticsStore.getLastTrafficDownload()
-        lastProfileId = trafficStatisticsStore.getLastProfileId()
-        lastCollectionAtNanos = 0L
-        connectionBaselines.clear()
+        collectionMutex.withLock {
+            lastTotalUpload = trafficStatisticsStore.getLastTrafficUpload()
+            lastTotalDownload = trafficStatisticsStore.getLastTrafficDownload()
+            lastProfileId = trafficStatisticsStore.getLastProfileId()
+            lastCollectionAtNanos = 0L
+            connectionBaselines.clear()
+        }
         collectTrafficDataSafely()
         PollingTimers.ticks(PollingTimerSpecs.TrafficStatsCollection).collect {
             collectTrafficDataSafely()
@@ -82,7 +95,7 @@ class AppTrafficStatisticsCollector(
     }
 
     private suspend fun collectTrafficDataSafely() {
-        runCatching { collectTrafficData() }
+        runCatching { collectionMutex.withLock { collectTrafficData() } }
             .onFailure { error ->
                 if (error is CancellationException) throw error
                 Timber.tag(TAG).e(error, "App traffic collection failed")

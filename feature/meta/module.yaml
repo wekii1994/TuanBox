@@ -7,6 +7,7 @@ settings:
   android:
     namespace: com.github.yumeyucca.yumebox.feature.meta
 dependencies:
+  - com.google.guava:guava:33.5.0-android
   - //core
   - //common
   - //locale

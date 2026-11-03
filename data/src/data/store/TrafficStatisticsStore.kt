@@ -179,7 +179,10 @@ class TrafficStatisticsStore(
     }
 
     private fun rangeCutoff(range: StatisticsTimeRange): Long =
-        startOfDay(now()) - ((range.days - 1) * DAY_MS)
+        Calendar.getInstance().apply {
+            timeInMillis = startOfDay(now())
+            add(Calendar.DAY_OF_YEAR, -(range.days - 1))
+        }.timeInMillis
 
     // endregion
 

@@ -38,7 +38,7 @@ val featureMetaViewModelModule = module {
     viewModel { ConnectionViewModel(androidContext()) }
     viewModel { ConnectionDetailViewModel(androidContext()) }
     // androidContext() is provided for AppIdentityResolver to resolve app names and icons
-    viewModel { TrafficStatisticsViewModel(get<TrafficStatisticsStore>(), androidContext()) }
+    viewModel { TrafficStatisticsViewModel(get<TrafficStatisticsStore>(), androidContext(), get()) }
     viewModel { CustomRoutingViewModel(get(), get(), get()) }
 }
 

@@ -25,10 +25,10 @@ package com.github.yumeyucca.yumebox.data.controller
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
-import kotlinx.serialization.json.jsonPrimitive
 import java.util.concurrent.ConcurrentHashMap
 
 data class AppIdentity(
@@ -42,16 +42,17 @@ class AppIdentityResolver(context: Context) {
     private val packageManager = appContext.packageManager
     private val packageCache = ConcurrentHashMap<String, AppIdentity>()
     private val labelCache = ConcurrentHashMap<String, String>()
-    private val uidCache = ConcurrentHashMap<Int, String?>()
+    private data class UidLookup(val packageName: String?)
+    private val uidCache = ConcurrentHashMap<Int, UidLookup>()
 
     @Volatile
     private var installedAppsCache: List<InstalledAppIdentity>? = null
 
     fun resolve(metadata: JsonObject): AppIdentity {
         val explicitPackageName =
-            metadata["packageName"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
-        val processName = metadata["process"]?.jsonPrimitive?.contentOrNull?.trim().orEmpty()
-        val uid = metadata["uid"]?.jsonPrimitive?.intOrNull
+            (metadata["packageName"] as? JsonPrimitive)?.contentOrNull?.trim().orEmpty()
+        val processName = (metadata["process"] as? JsonPrimitive)?.contentOrNull?.trim().orEmpty()
+        val uid = (metadata["uid"] as? JsonPrimitive)?.intOrNull
         return resolve(
             explicitPackageName = explicitPackageName,
             processName = processName,
@@ -113,11 +114,11 @@ class AppIdentityResolver(context: Context) {
 
     private fun resolveByUid(uid: Int?): String? {
         if (uid == null || uid <= 0) return null
-        if (uidCache.containsKey(uid)) return uidCache[uid]
+        uidCache[uid]?.let { return it.packageName }
 
         val packageName =
             packageManager.getPackagesForUid(uid)?.firstNotNullOfOrNull(::findInstalledPackage)
-        uidCache[uid] = packageName
+        uidCache[uid] = UidLookup(packageName)
         return packageName
     }
 

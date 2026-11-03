@@ -25,7 +25,7 @@ import com.github.yumeyucca.yumebox.core.model.ConnectionInfo
 object ConnectionHistoryManager {
     private const val MAX_SIZE = 100
 
-    private val _closedConnections = mutableListOf<ConnectionInfo>()
+    private val closedById = LinkedHashMap<String, ConnectionInfo>()
     private var previousConnections: Map<String, ConnectionInfo> = emptyMap()
     private val lock = Any()
 
@@ -34,12 +34,18 @@ object ConnectionHistoryManager {
             val currentMap = currentConnections.associateBy { it.id }
             val currentIds = currentMap.keys
 
-            previousConnections.keys.minus(currentIds).forEach { closedId ->
-                previousConnections[closedId]?.let { conn -> _closedConnections.add(0, conn) }
+            currentIds.forEach(closedById::remove)
+            previousConnections.forEach { (id, connection) ->
+                if (id !in currentIds) {
+                    closedById.remove(id)
+                    closedById[id] = connection
+                }
             }
 
-            while (_closedConnections.size > MAX_SIZE) {
-                _closedConnections.removeAt(_closedConnections.lastIndex)
+            while (closedById.size > MAX_SIZE) {
+                val oldest = closedById.keys.iterator()
+                oldest.next()
+                oldest.remove()
             }
 
             previousConnections = currentMap
@@ -48,19 +54,19 @@ object ConnectionHistoryManager {
 
     fun getClosedConnections(): List<ConnectionInfo> {
         synchronized(lock) {
-            return _closedConnections.toList()
+            return closedById.values.toList().asReversed()
         }
     }
 
     fun findClosedConnection(id: String): ConnectionInfo? {
         synchronized(lock) {
-            return _closedConnections.firstOrNull { it.id == id }
+            return closedById[id]
         }
     }
 
     fun clear() {
         synchronized(lock) {
-            _closedConnections.clear()
+            closedById.clear()
             previousConnections = emptyMap()
         }
     }

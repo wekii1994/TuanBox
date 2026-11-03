@@ -86,7 +86,9 @@ class ConnectionDetailViewModel(private val appContext: Context) : ViewModel() {
             ConnectionDetailState(
                 info = initial,
                 canInterrupt = canInterrupt,
+                hasLoaded = initial != null && !canInterrupt,
             )
+        if (initial != null && !canInterrupt) return
         pollingJob =
             viewModelScope.launch {
                 val gone = pollOnce(connectionId)
@@ -147,7 +149,7 @@ class ConnectionDetailViewModel(private val appContext: Context) : ViewModel() {
                 }
                 // A snapshot without this id means the core dropped it; a failed query means we
                 // know nothing, so the loop must survive.
-                connections != null && _state.value.info != null -> {
+                connections != null -> {
                     _state.update { it.copy(canInterrupt = false) }
                     true
                 }

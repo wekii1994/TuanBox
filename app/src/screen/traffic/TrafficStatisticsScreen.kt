@@ -33,6 +33,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -72,8 +77,8 @@ import java.time.format.DateTimeFormatter
 import kotlin.math.abs
 
 private enum class TrafficDetailSection(val title: String) {
-    RECENT_REQUESTS("最近请求"),
-    TARGET_SITES("目标站点"),
+    RECENT_REQUESTS("最近连接"),
+    TARGET_SITES("目标服务"),
 }
 
 @Composable
@@ -83,7 +88,13 @@ fun TrafficStatisticsScreen(navigator: Navigator = LocalNavigator.current) {
     val context = LocalContext.current
     val spacing = AppTheme.spacing
 
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.overviewState.collectAsStateWithLifecycle()
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(viewModel, lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            viewModel.notices.collect { context.toast(it) }
+        }
+    }
     var selectedDetailSection by rememberSaveable { mutableStateOf(TrafficDetailSection.RECENT_REQUESTS) }
 
     val timeRanges = StatisticsTimeRange.entries
@@ -99,7 +110,6 @@ fun TrafficStatisticsScreen(navigator: Navigator = LocalNavigator.current) {
                     IconButton(
                         onClick = {
                             viewModel.clearAllStatistics()
-                            context.toast(YumeTxt.TrafficStatistics.Action.ClearSuccess)
                         }
                     ) {
                         Icon(
@@ -118,7 +128,7 @@ fun TrafficStatisticsScreen(navigator: Navigator = LocalNavigator.current) {
         ) {
             stickySegmentedTabs(
                 key = "__time_range_tabs__",
-                tabs = timeRanges.map { it.label },
+                tabs = timeRanges.map { if (it == StatisticsTimeRange.WEEK) "近 7 天" else it.label },
                 selectedTabIndex = selectedRangeIndex,
                 onTabSelected = { index ->
                     timeRanges.getOrNull(index)?.let(viewModel::setTimeRange)
@@ -136,8 +146,8 @@ fun TrafficStatisticsScreen(navigator: Navigator = LocalNavigator.current) {
 
             item(key = "details_card") {
                 Spacer(modifier = Modifier.height(spacing.space12))
-                DetailsSectionCard(
-                    uiState = uiState,
+                LiveDetailsSection(
+                    viewModel = viewModel,
                     selectedSection = selectedDetailSection,
                     onSectionSelect = { selectedDetailSection = it },
                     navigator = navigator,
@@ -175,7 +185,7 @@ private fun OverviewSectionCard(
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(spacing.space4)) {
                     Text(
-                        text = if (isToday) "今日上传" else "本周上传",
+                        text = if (isToday) "今日上传" else "近 7 天上传",
                         style = MiuixTheme.textStyles.footnote1,
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                     )
@@ -192,7 +202,7 @@ private fun OverviewSectionCard(
                     verticalArrangement = Arrangement.spacedBy(spacing.space4),
                 ) {
                     Text(
-                        text = if (isToday) "今日下载" else "本周下载",
+                        text = if (isToday) "今日下载" else "近 7 天下载",
                         style = MiuixTheme.textStyles.footnote1,
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                     )
@@ -251,7 +261,7 @@ private fun OverviewSectionCard(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            text = "本周累计 · ${ByteFormatter.format(uiState.weekTotal)}",
+                            text = "近 7 天累计 · ${ByteFormatter.format(uiState.weekTotal)}",
                             style = MiuixTheme.textStyles.body2,
                             fontWeight = FontWeight.Medium,
                             color = MiuixTheme.colorScheme.onSurface,
@@ -285,11 +295,32 @@ private fun OverviewSectionCard(
 }
 
 @Composable
+private fun LiveDetailsSection(
+    viewModel: TrafficStatisticsViewModel,
+    selectedSection: TrafficDetailSection,
+    onSectionSelect: (TrafficDetailSection) -> Unit,
+    navigator: Navigator,
+) {
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val nowMillis by produceState(System.currentTimeMillis(), lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+                value = System.currentTimeMillis()
+                delay(30_000L)
+            }
+        }
+    }
+    DetailsSectionCard(state, selectedSection, onSectionSelect, navigator, nowMillis)
+}
+
+@Composable
 private fun DetailsSectionCard(
     uiState: TrafficStatisticsUiState,
     selectedSection: TrafficDetailSection,
     onSectionSelect: (TrafficDetailSection) -> Unit,
     navigator: Navigator,
+    nowMillis: Long,
 ) {
     val spacing = AppTheme.spacing
     val componentSizes = AppTheme.sizes
@@ -307,6 +338,12 @@ private fun DetailsSectionCard(
                     .padding(horizontal = spacing.space16, vertical = spacing.space12),
             )
 
+            Text(
+                text = uiState.connectionError ?: "当前连接及最近 100 条关闭记录；流量为连接累计值，与上方时间范围无关",
+                style = MiuixTheme.textStyles.footnote1,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                modifier = Modifier.padding(horizontal = spacing.space16, vertical = spacing.space8),
+            )
             AnimatedContent(
                 targetState = selectedSection,
                 transitionSpec = {
@@ -317,28 +354,31 @@ private fun DetailsSectionCard(
                 when (section) {
                     TrafficDetailSection.RECENT_REQUESTS -> {
                         if (uiState.recentRequests.isEmpty()) {
-                            EmptyDetailNotice(message = "暂无网络请求记录")
+                            EmptyDetailNotice(message = "暂无连接记录")
                         } else {
                             Column(modifier = Modifier.fillMaxWidth()) {
                                 uiState.recentRequests.forEachIndexed { index, request ->
-                                    RecentRequestItemCard(
-                                        record = request,
-                                        onClick = {
-                                            ConnectionDetailHolder.setup(request.connection)
-                                            navigator.push(
-                                                Route.ConnectionDetail(
-                                                    connectionId = request.connection.id,
-                                                    canInterrupt = request.isActive,
+                                    key(request.connection.id) {
+                                        RecentRequestItemCard(
+                                            record = request,
+                                            nowMillis = nowMillis,
+                                            onClick = {
+                                                ConnectionDetailHolder.setup(request.connection)
+                                                navigator.push(
+                                                    Route.ConnectionDetail(
+                                                        connectionId = request.connection.id,
+                                                        canInterrupt = request.isActive,
+                                                    )
                                                 )
-                                            )
-                                        },
-                                    )
-                                    if (index < uiState.recentRequests.lastIndex) {
-                                        HorizontalDivider(
-                                            modifier = Modifier.padding(start = 64.dp, end = spacing.space16),
-                                            thickness = componentSizes.thinDividerThickness,
-                                            color = MiuixTheme.colorScheme.outline.copy(alpha = AppTheme.opacity.outline),
+                                            },
                                         )
+                                        if (index < uiState.recentRequests.lastIndex) {
+                                            HorizontalDivider(
+                                                modifier = Modifier.padding(start = 64.dp, end = spacing.space16),
+                                                thickness = componentSizes.thinDividerThickness,
+                                                color = MiuixTheme.colorScheme.outline.copy(alpha = AppTheme.opacity.outline),
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -352,17 +392,20 @@ private fun DetailsSectionCard(
                             val maxBytes = uiState.targetSites.firstOrNull()?.totalBytes?.coerceAtLeast(1L) ?: 1L
                             Column(modifier = Modifier.fillMaxWidth()) {
                                 uiState.targetSites.forEachIndexed { index, site ->
-                                    TargetSiteItemCard(
-                                        record = site,
-                                        rank = index + 1,
-                                        maxBytes = maxBytes,
-                                    )
-                                    if (index < uiState.targetSites.lastIndex) {
-                                        HorizontalDivider(
-                                            modifier = Modifier.padding(start = UiDp.dp48, end = spacing.space16),
-                                            thickness = componentSizes.thinDividerThickness,
-                                            color = MiuixTheme.colorScheme.outline.copy(alpha = AppTheme.opacity.outline),
+                                    key(site.siteKey) {
+                                        TargetSiteItemCard(
+                                            record = site,
+                                            nowMillis = nowMillis,
+                                            rank = index + 1,
+                                            maxBytes = maxBytes,
                                         )
+                                        if (index < uiState.targetSites.lastIndex) {
+                                            HorizontalDivider(
+                                                modifier = Modifier.padding(start = UiDp.dp48, end = spacing.space16),
+                                                thickness = componentSizes.thinDividerThickness,
+                                                color = MiuixTheme.colorScheme.outline.copy(alpha = AppTheme.opacity.outline),
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -374,9 +417,11 @@ private fun DetailsSectionCard(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun RecentRequestItemCard(
     record: RecentRequestRecord,
+    nowMillis: Long,
     onClick: () -> Unit,
 ) {
     val spacing = AppTheme.spacing
@@ -384,7 +429,7 @@ private fun RecentRequestItemCard(
     val effectiveHost = remember(record.displayHost, connection) {
         record.displayHost.ifBlank { connection.extractDisplayDestination() }
     }
-    val timeText = formatMillisTime(record.startMillis)
+    val timeText = formatMillisTime(record.startMillis, nowMillis)
 
     Row(
         modifier = Modifier
@@ -395,7 +440,7 @@ private fun RecentRequestItemCard(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         AppIconBadge(
-            packageName = connection.metadata["process"]?.toString()?.trim('"'),
+            packageName = record.sourcePackageName,
             appName = record.sourceAppName ?: effectiveHost,
         )
 
@@ -419,7 +464,7 @@ private fun RecentRequestItemCard(
                     modifier = Modifier.weight(1f, fill = false),
                 )
                 Text(
-                    text = timeText,
+                    text = "建立于 $timeText",
                     style = MiuixTheme.textStyles.footnote1,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
@@ -437,27 +482,21 @@ private fun RecentRequestItemCard(
                 )
             }
 
-            // Metadata badges row
-            Row(
+            // Wrapping badges keep long node/rule names from squeezing the byte counts.
+            FlowRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(spacing.space6),
-                verticalAlignment = Alignment.CenterVertically,
+                verticalArrangement = Arrangement.spacedBy(spacing.space4),
             ) {
-                record.serviceTag?.let { tag ->
-                    SmallBadge(text = tag, isPrimary = true)
-                }
+                record.serviceTag?.let { SmallBadge(text = it, isPrimary = true) }
                 SmallBadge(text = record.exitNode, isPrimary = false)
                 SmallBadge(text = record.ruleLabel, isPrimary = false)
-
-                Spacer(modifier = Modifier.weight(1f))
-
-                // Upload / Download bytes
-                Text(
-                    text = "↑ ${ByteFormatter.format(connection.upload)}  ↓ ${ByteFormatter.format(connection.download)}",
-                    style = MiuixTheme.textStyles.footnote1.copy(fontSize = 11.sp),
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                )
             }
+            Text(
+                text = "↑ ${ByteFormatter.format(connection.upload)}  ↓ ${ByteFormatter.format(connection.download)}",
+                style = MiuixTheme.textStyles.footnote1.copy(fontSize = 11.sp),
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            )
         }
     }
 }
@@ -465,13 +504,14 @@ private fun RecentRequestItemCard(
 @Composable
 private fun TargetSiteItemCard(
     record: TargetSiteRecord,
+    nowMillis: Long,
     rank: Int,
     maxBytes: Long,
 ) {
     val spacing = AppTheme.spacing
     val radii = AppTheme.radii
     val progress = (record.totalBytes.toFloat() / maxBytes.toFloat()).coerceIn(0.02f, 1f)
-    val timeText = formatMillisTime(record.lastSeenAt)
+    val timeText = formatMillisTime(record.lastSeenAt, nowMillis)
 
     Row(
         modifier = Modifier
@@ -561,7 +601,7 @@ private fun TargetSiteItemCard(
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
                 Text(
-                    text = "${record.connectionCount} 次请求 · $timeText",
+                    text = "${record.connectionCount} 条连接 · 最近建立于 $timeText",
                     style = MiuixTheme.textStyles.footnote1.copy(fontSize = 11.sp),
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
@@ -704,9 +744,10 @@ private fun AppIconBadge(packageName: String?, appName: String) {
 
 private val DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("MM-dd HH:mm")
 
-private fun formatMillisTime(millis: Long): String {
-    if (millis <= 0L) return "刚刚"
-    val diffSeconds = (System.currentTimeMillis() - millis) / 1000
+private fun formatMillisTime(millis: Long, nowMillis: Long): String {
+    if (millis <= 0L) return "未知时间"
+    if (millis > nowMillis) return Instant.ofEpochMilli(millis).atZone(ZoneId.systemDefault()).format(DATE_TIME_FORMATTER)
+    val diffSeconds = (nowMillis - millis) / 1000
     return when {
         diffSeconds < 60 -> "刚刚"
         diffSeconds < 3600 -> "${diffSeconds / 60} 分钟前"

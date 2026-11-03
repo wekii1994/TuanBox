@@ -312,8 +312,8 @@ private fun formatThemeSeedHex(argb: Long): String {
 }
 
 private fun parseThemeHexColorOrNull(input: String): Color? {
-    val body = input.removePrefix("#").removePrefix("0x").uppercase()
-    if (body.length != 6) return null
+    val body = input.trim().uppercase(java.util.Locale.ROOT).removePrefix("#").removePrefix("0X")
+    if (body.length != 6 || !body.all { it in '0'..'9' || it in 'A'..'F' }) return null
     val rgb = body.toLongOrNull(16) ?: return null
     return colorFromArgb(0xFF000000L or rgb)
 }
