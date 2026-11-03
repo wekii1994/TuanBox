@@ -32,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -464,14 +465,15 @@ fun TrafficStatisticsScreen(navigator: Navigator = LocalNavigator.current) {
                     }
 
                     Button(
-                        text = "查看当前相关连接",
                         onClick = {
                             val keyToNavigate = detail.key
                             selectedServiceKey = null
                             navigator.push(Route.Connection(serviceKey = keyToNavigate))
                         },
                         modifier = Modifier.fillMaxWidth(),
-                    )
+                    ) {
+                        Text("查看当前相关连接")
+                    }
                 }
             }
         }
